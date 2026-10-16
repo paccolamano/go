@@ -1,0 +1,18 @@
+# Approved per-module deviations from the shared gates.
+#
+# Columns (whitespace-separated): module kind value justification
+#   module         module root as discovered, e.g. retry or retry/v2
+#   kind           coverage | platforms
+#   value          coverage:  integer 0-79 (lowered statement coverage threshold)
+#                  platforms: comma-separated GOOS/GOARCH list of the platforms
+#                             the module does support, from linux, darwin,
+#                             windows x amd64, arm64
+#   justification  free text, required; everything after the third column
+#
+# At most one line per (module, kind). Lines naming a module that does not
+# exist make the structure check fail. A platforms restriction must also be
+# stated in the module README.
+#
+# Examples:
+# retry       coverage   70                           generated table code is exercised only via fuzzing
+# fsnotify    platforms  linux/amd64,linux/arm64      relies on inotify; README states Linux-only support

@@ -1,0 +1,17 @@
+# Bearer configuration (pull request gate 8, security and privacy findings).
+#
+# The security report includes Bearer's sensitive-data (privacy) rules. Every
+# severity, including warnings, fails the scan. Findings are suppressed only
+# with "bearer ignore add <fingerprint> --comment '<justification>'", which
+# writes bearer.ignore.
+disable-version-check: true
+report:
+    report: security
+    fail-on-severity: critical,high,medium,low,warning
+    severity: critical,high,medium,low,warning
+scan:
+    hide_progress_bar: true
+    quiet: true
+    skip-path:
+        - specs
+        - scripts/tests

@@ -1,0 +1,54 @@
+# Pull request metadata checks: the pull request title, which becomes the
+# squash commit message on main (FR-032), and changelog discipline (FR-033).
+# Kept apart from pr.yml so that editing the title or adding/removing the
+# skip-changelog label re-runs only these two statuses.
+name: pr-meta
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+
+permissions: {}
+
+concurrency:
+  group: pr-meta-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  commits:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check the PR title (the squash commit message)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # Untrusted input: only ever read from the environment.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: scripts/commits-check.sh "$BASE_SHA" "$HEAD_SHA"
+
+  changelog:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check that changed modules update their changelog
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CHANGELOG_WAIVED: ${{ contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+        run: scripts/changelog-check.sh "$BASE_SHA" "$HEAD_SHA"

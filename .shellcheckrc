@@ -1,0 +1,4 @@
+# Resolve "# shellcheck source=..." directives relative to each script and
+# follow sourced files (scripts/lib.sh, scripts/tests/helpers.sh).
+source-path=SCRIPTDIR
+external-sources=true

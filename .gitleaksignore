@@ -1,0 +1,6 @@
+# Gitleaks suppressions (pull request gate 6, secrets).
+#
+# One finding fingerprint per line, as printed by gitleaks
+# (<commit>:<file>:<rule-id>:<line>), each preceded by a "#" comment stating
+# the justification (e.g. "documented example token, not a real credential").
+# A real secret that was committed must be rotated, never ignored.

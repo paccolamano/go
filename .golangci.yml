@@ -1,0 +1,71 @@
+# Shared golangci-lint (v2) configuration for every module of the repository.
+# scripts/lint.sh runs it from each module root with --config. Module-specific
+# overrides are forbidden unless justified (constitution, Repository layout).
+#
+# Linter                                 Constitution Principle IV rule
+# gofmt, goimports (formatters), govet   formatting and vetting (mandatory)
+# errcheck, staticcheck, ineffassign,    standard static analysis; errors are
+#   unused                               never silently discarded
+# revive: exported, package-comments     exported identifiers and packages are documented
+# errorlint, errname, wrapcheck          errors wrapped with %w, usable with errors.Is/As
+# forbidigo                              no stdout/stderr writes, os.Exit, global logger, panic
+# gochecknoinits, gochecknoglobals       no init() side effects, no global mutable state
+# noctx, contextcheck                    I/O accepts and honors a context.Context
+# nolintlint                             //nolint names the linter and states the reason
+# usetesting, thelper, misspell          test hygiene and spelling
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - contextcheck
+    - errname
+    - errorlint
+    - forbidigo
+    - gochecknoglobals
+    - gochecknoinits
+    - misspell
+    - noctx
+    - nolintlint
+    - revive
+    - thelper
+    - usetesting
+    - wrapcheck
+  settings:
+    forbidigo:
+      analyze-types: true
+      exclude-godoc-examples: true
+      forbid:
+        - pattern: ^fmt\.Print.*$
+          msg: library code must not write to stdout; return values or accept an io.Writer.
+        - pattern: ^print(ln)?$
+          msg: library code must not write to stderr.
+        - pattern: ^os\.Exit$
+          msg: library code must not exit the process.
+        - pattern: ^log\.
+          msg: use a caller-injected *slog.Logger instead of the global logger.
+        - pattern: ^panic$
+          msg: return an error for recoverable conditions.
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - forbidigo
+          - gochecknoglobals
+          - wrapcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/paccolamano/go

@@ -1,0 +1,9 @@
+# Repository-level Conventional Commit scopes, for changes that do not belong
+# to a module. One scope per line. Lowercase, ^[a-z0-9][a-z0-9._-]*$, and it
+# must not collide with a module directory. Commits confined to a single module
+# must use that module's directory as scope instead.
+ci
+deps
+docs
+repo
+specs

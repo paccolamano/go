@@ -1,0 +1,145 @@
+# Module release: pushing a <dir>/vX.Y.Z tag validates it, re-runs the local
+# gates for that module, generates its SBOM and publishes a GitHub release with
+# the module's changelog section as notes. Only the publish job holds a write
+# token, and it runs no checkout and no third-party binary. The workflow never
+# creates, moves or deletes tags. See specs/001-init-repo-tooling/contracts/release.md.
+name: release
+
+on:
+  push:
+    tags: ["*/v*"]
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  GOWORK: "off"
+  GOTOOLCHAIN: local
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      exists: ${{ steps.existing.outputs.exists }}
+      dir: ${{ steps.tag.outputs.dir }}
+      root: ${{ steps.tag.outputs.root }}
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+      asset: ${{ steps.tag.outputs.asset }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check whether the release already exists
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "release $TAG already exists, nothing to do" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Validate the tag
+        id: tag
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          TAG: ${{ github.ref_name }}
+          NOTES_FILE: release-notes.md
+        run: scripts/release-validate.sh "$TAG" | tee -a "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.existing.outputs.exists != 'true'
+        with:
+          name: release-notes
+          path: release-notes.md
+          if-no-files-found: error
+
+  gates:
+    needs: validate
+    if: needs.validate.outputs.exists != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load pinned versions
+        run: grep -v '^#' versions.env | grep . >> "$GITHUB_ENV"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION_NEWEST }}.x
+          cache: false
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          install-only: true
+      - name: Run the local gates for the released module
+        env:
+          ROOT: ${{ needs.validate.outputs.root }}
+        run: |
+          scripts/lint.sh "$ROOT"
+          scripts/test.sh "$ROOT"
+
+  sbom:
+    needs: validate
+    if: needs.validate.outputs.exists != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Trivy (pinned, SHA-256 verified)
+        run: |
+          scripts/install-tool.sh trivy "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Generate the module SBOM
+        env:
+          ROOT: ${{ needs.validate.outputs.root }}
+          ASSET: ${{ needs.validate.outputs.asset }}
+        run: trivy fs --format cyclonedx --output "$ASSET" "$ROOT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-sbom
+          path: ${{ needs.validate.outputs.asset }}
+          if-no-files-found: error
+
+  publish:
+    needs: [validate, gates, sbom]
+    if: needs.validate.outputs.exists != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-notes
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-sbom
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          ASSET: ${{ needs.validate.outputs.asset }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+        run: |
+          flags=(--repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes-file release-notes.md)
+          if [ "$PRERELEASE" = true ]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$TAG" "${flags[@]}" "$ASSET"
