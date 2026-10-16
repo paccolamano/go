@@ -140,13 +140,14 @@ deletion. Apply it once, after both pull request workflows have run on a pull re
 gh api -X POST repos/paccolamano/go/rulesets --input .github/ruleset-main.json
 ```
 
-Then make the repository settings match. Allow squash merge only, and make the squash commit
-take the PR title and body:
+Then make the repository settings match. Allow squash merge only, make the squash commit take
+the PR title and body, and delete merged branches automatically:
 
 ```bash
 gh api -X PATCH repos/paccolamano/go \
   -F allow_squash_merge=true -F allow_merge_commit=false -F allow_rebase_merge=false \
-  -f squash_merge_commit_title=PR_TITLE -f squash_merge_commit_message=PR_BODY
+  -f squash_merge_commit_title=PR_TITLE -f squash_merge_commit_message=PR_BODY \
+  -F delete_branch_on_merge=true
 ```
 
 ## Updating tool versions

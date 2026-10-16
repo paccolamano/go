@@ -320,7 +320,7 @@ draft PR from a scratch branch, each commit row produces exactly the expected st
   - `integration_id: 15368` (GitHub Actions) on each entry.
 
   Validate the file with `jq .`.
-- [ ] T039 [US2] Validate [quickstart.md §3](quickstart.md#3-pull-request-checks-user-story-2): push a scratch branch to `paccolamano/go` and open a **draft** PR (an outward action, so confirm with the maintainer first). Walk through every commit row, then close the PR and delete the branch.
+- [ ] T039 [US2] Validate [quickstart.md §3](quickstart.md#3-pull-request-checks-user-story-2): push a scratch branch to `paccolamano/go` and open a **draft** PR (an outward action, so confirm with the maintainer first). Walk through every commit row, then close the PR and delete the branch. **Status (2026-10-16)**: partially done. PR #1 ran every contracted status to a conclusive result (all green after the Bash 3.2 fix); the failure rows of §3 were not exercised, by maintainer decision.
 
 **Checkpoint**: every PR to `main` reports all the contracted statuses, each with a conclusive
 result.
@@ -369,7 +369,7 @@ Foundational (`scripts/install-tool.sh`). It does not depend on US2.
   - **`sbom`** (`contents: read`; same `needs`/`if`): `scripts/install-tool.sh trivy`, then `trivy fs --format cyclonedx --output "<asset>" <root>`, then upload the `release-sbom` artifact.
   - **`publish`** (`contents: write`; `needs: [validate, gates, sbom]`; same `if`; **no checkout and no third-party binary**): download both artifacts with `actions/download-artifact`, then run `gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes-file release-notes.md "<asset>"`, adding `--prerelease` when `prerelease == 'true'`.
   - When `exists == 'true'`, `validate` logs `release already exists, nothing to do` in the job summary.
-- [ ] T043 [US3] Validate [quickstart.md §4](quickstart.md#4-release-user-story-3--on-a-fork-or-scratch-repository-only) on a **fork or scratch repository only**. This is an outward action, so confirm with the maintainer. Never push test tags to `paccolamano/go`. Run every tag row, including the re-run idempotency row, and confirm that `actions/download-artifact` v8.0.1 reads the artifacts uploaded by `actions/upload-artifact` v7.0.1. If it does not, align the two majors in all workflows and in [research.md R-04](research.md#r-04-pinned-components).
+- [X] T043 [US3] Validate [quickstart.md §4](quickstart.md#4-release-user-story-3--on-a-fork-or-scratch-repository-only) on a **fork or scratch repository only**. This is an outward action, so confirm with the maintainer. Never push test tags to `paccolamano/go`. Run every tag row, including the re-run idempotency row, and confirm that `actions/download-artifact` v8.0.1 reads the artifacts uploaded by `actions/upload-artifact` v7.0.1. If it does not, align the two majors in all workflows and in [research.md R-04](research.md#r-04-pinned-components). **Done (2026-10-16)** in a private scratch repository (GitHub does not allow forking your own repository), since deleted. Every row behaved as documented, and `download-artifact` v8.0.1 read the v7.0.1 uploads.
 
 **Checkpoint**: tag-driven releases work, and invalid tags never publish.
 
@@ -421,9 +421,9 @@ reflects added and removed modules, and the gate verdicts are unchanged with a b
   - no workflow references `secrets.` other than `github.token`.
 
   Fix any finding, then run `make scripts-test` and `shellcheck` until both are clean.
-- [ ] T051 Create the `skip-changelog` label in `paccolamano/go` with `gh label create skip-changelog --description "Waive the changelog check for this PR (maintainers only)" --color BFD4F2`. This is an outward action, so confirm with the maintainer first.
-- [ ] T052 Once the first real PR containing this feature has run both PR workflows, apply branch protection with `gh api -X POST repos/paccolamano/go/rulesets --input .github/ruleset-main.json`. This is an outward admin action, so confirm with the maintainer first. Check that every context from T038 appears as required.
-- [ ] T053 Run the full [quickstart.md](quickstart.md) "Done when" list. Then update the [spec quality checklist notes](checklists/requirements.md) with the validation date and any deviation found.
+- [X] T051 Create the `skip-changelog` label in `paccolamano/go` with `gh label create skip-changelog --description "Waive the changelog check for this PR (maintainers only)" --color BFD4F2`. This is an outward action, so confirm with the maintainer first.
+- [X] T052 Once the first real PR containing this feature has run both PR workflows, apply branch protection with `gh api -X POST repos/paccolamano/go/rulesets --input .github/ruleset-main.json`. This is an outward admin action, so confirm with the maintainer first. Check that every context from T038 appears as required.
+- [X] T053 Run the full [quickstart.md](quickstart.md) "Done when" list. Then update the [spec quality checklist notes](checklists/requirements.md) with the validation date and any deviation found. **Done (2026-10-16)** except the §3 failure rows (see T039).
 
 ---
 
@@ -435,7 +435,7 @@ request title reaches `main`, as the squash commit message.
 - [X] T054 Rewrite `scripts/tests/commits_test.sh` for the title-only rule and see it fail against the old script. Cover: branch commits (`wip`, `fixup!`) are ignored; module, repository and no-scope titles; `!`; `Revert "…"`; a non-conventional title; an unknown scope; a PR confined to one module that must use its scope; a missing `PR_TITLE`, which exits 2; a scope colliding with a module, which exits 2.
 - [X] T055 Rewrite `scripts/commits-check.sh` so that T054 passes. Check only `PR_TITLE`, and compute the confinement rule over `git diff --name-only <base>...<head>`.
 - [X] T056 Add `required_linear_history` and `allowed_merge_methods: ["squash"]` to `.github/ruleset-main.json`, and align `.github/workflows/pr-meta.yml`, `CONTRIBUTING.md`, spec FR-032 and the new FR-043, research R-11, the contracts, the quickstart and the plan.
-- [ ] T057 Apply the repository merge settings (an outward admin action, so confirm with the maintainer first): `gh api -X PATCH repos/paccolamano/go -F allow_squash_merge=true -F allow_merge_commit=false -F allow_rebase_merge=false -f squash_merge_commit_title=PR_TITLE -f squash_merge_commit_message=PR_BODY`.
+- [X] T057 Apply the repository merge settings (an outward admin action, so confirm with the maintainer first): `gh api -X PATCH repos/paccolamano/go -F allow_squash_merge=true -F allow_merge_commit=false -F allow_rebase_merge=false -f squash_merge_commit_title=PR_TITLE -f squash_merge_commit_message=PR_BODY`.
 
 ---
 
