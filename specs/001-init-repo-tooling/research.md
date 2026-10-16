@@ -24,8 +24,8 @@ that date (cool-down policy, see R-03).
 - **Decision**: put the logic in **portable Bash scripts** under `scripts/`, called by both the
   Makefile and the workflows. The Makefile stays a thin wrapper. The scripts must run on
   **Bash 3.2** (the macOS default) and use only POSIX utilities. That means no `mapfile`, no
-  associative arrays, no `${x,,}`, no `grep -P`, no `sed -i` and no `sort -V`; versions are
-  compared in `awk`. The Makefile must run on **GNU Make 3.81** (the macOS default), so no
+  associative arrays, no `${x,,}`, no `case` inside `$( ... )` (Bash 3.2 misparses the
+  pattern's `)`), no `grep -P`, no `sed -i` and no `sort -V`; versions are compared in `awk`. The Makefile must run on **GNU Make 3.81** (the macOS default), so no
   `.ONESHELL`, `!=` or `$(file)`.
 - **Rationale**:
   - Calling the same scripts locally and in CI gives identical verdicts (SC-004).

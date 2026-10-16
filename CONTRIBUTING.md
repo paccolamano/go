@@ -162,6 +162,7 @@ All toolchain and tool versions live in [`versions.env`](versions.env). When upd
 
 ## Changing the tooling
 
-Tooling scripts are portable Bash: Bash 3.2, POSIX utilities and no GNU-only flags. They are
+Tooling scripts are portable Bash: Bash 3.2, POSIX utilities and no GNU-only flags. Bash 3.2
+cannot parse a `case` statement inside `$( ... )`; put such loops in a function instead. They are
 tested first in `scripts/tests/`, where every `*_test.sh` holds `test_*` functions that run in
 isolated temporary repositories. Run `make scripts-test` (tests plus shellcheck) before pushing.

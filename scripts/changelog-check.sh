@@ -16,15 +16,23 @@ REPO_ROOT=$(repo_root)
 roots=$(discover_modules)
 files=$(git -C "$REPO_ROOT" diff --name-only "$1...$2") || die 2 "cannot compute the diff $1...$2"
 
-needs=$(printf '%s\n' "$files" | while IFS= read -r f; do
-	[ -n "$f" ] || continue
-	m=$(module_for_path "$f" "$roots")
-	[ -n "$m" ] || continue
-	case "${f#"$m"/}" in
-	*_test.go | testdata/* | */testdata/*) ;;
-	go.mod | *.go) printf '%s\n' "$m" ;;
-	esac
-done | LC_ALL=C sort -u)
+# modules_needing_changelog prints the module of each changed non-test Go
+# source or go.mod. It is a top-level function because Bash 3.2 cannot parse a
+# "case" statement inside "$( ... )".
+modules_needing_changelog() {
+	local f m
+	printf '%s\n' "$files" | while IFS= read -r f; do
+		[ -n "$f" ] || continue
+		m=$(module_for_path "$f" "$roots")
+		[ -n "$m" ] || continue
+		case "${f#"$m"/}" in
+		*_test.go | testdata/* | */testdata/*) ;;
+		go.mod | *.go) printf '%s\n' "$m" ;;
+		esac
+	done
+}
+
+needs=$(modules_needing_changelog | LC_ALL=C sort -u)
 
 if [ -z "$needs" ]; then
 	log "no module source changes require a changelog entry"
