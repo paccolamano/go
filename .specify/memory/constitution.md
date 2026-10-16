@@ -1,39 +1,3 @@
-<!--
-Sync Impact Report
-==================
-Version change: 1.0.0 → 1.1.0
-Bump rationale: MINOR. Quality gates are split into local and pull request gates, and a security
-scanning gate set (Trivy, SBOM, Gitleaks, Semgrep, Bearer) is added. govulncheck is replaced by
-Trivy with the same intent (no known vulnerable dependencies); no principle is removed or
-redefined.
-
-Modified principles:
-  - II. Stable Public API & Semantic Versioning: gorelease check moved from a local release step
-    to the pull request workflow.
-  - IV. Idiomatic, High-Quality Go: gofmt/goimports and go vet are enforced through the shared
-    golangci-lint configuration instead of as separate tools.
-
-Modified sections:
-  - Technology & Compatibility Constraints: govulncheck removed; Trivy declared the single
-    vulnerability scanner (CI only); new "Vulnerability scanning" rule; Gitleaks enforces the
-    secrets rule.
-  - Development Workflow & Quality Gates: "Quality gates" replaced by "Local gates"
-    (golangci-lint + go test only) and "Pull request gates" (required status checks, including
-    security scans); new "Finding suppression" rule; release procedure uses the CI gorelease
-    report.
-  - Governance / Compliance review: references local and pull request gates.
-
-Added sections: none (new rules live inside existing sections)
-Removed sections: none
-
-Dependent templates (read the constitution at runtime; not modified by this command):
-  ✅ .specify/templates/plan-template.md — "Constitution Check" derives gates from this file.
-  ✅ .specify/templates/tasks-template.md — no change needed.
-  ✅ .specify/templates/spec-template.md, checklist-template.md — no conflicts.
-
-Deferred TODOs: none
--->
-
 # paccolamano/go Constitution
 
 ## Core Principles
@@ -199,8 +163,16 @@ inherited by every project that imports the module.
   justification.
 - **Change scope**: a change SHOULD touch a single module. Coordinated changes across modules
   MUST be released in dependency order, each module tagging its own version.
-- **Commits**: commit messages MUST follow Conventional Commits with the module directory as
-  scope (e.g. `feat(retry): add jittered backoff`, `fix(cache)!: ...` for breaking changes).
+- **Merging**: pull requests are merged into `main` only with squash merge, so `main` keeps a
+  linear history with exactly one commit per pull request. Branch protection MUST allow only
+  squash merges and require a linear history on `main`, and the squash commit title MUST be the
+  pull request title.
+- **Commits**: the pull request title, which becomes the squash commit message on `main`, MUST
+  follow Conventional Commits with the module directory as scope (e.g.
+  `feat(retry): add jittered backoff`, `fix(cache)!: ...` for breaking changes); changes outside
+  modules use no scope or a repository-level scope. The pull request workflow MUST check the
+  title. Commits on pull request branches are not constrained, and contributors SHOULD keep them
+  few.
 - **Release procedure**: update `CHANGELOG.md`, choose the version bump consistent with the
   `gorelease` report from the pull request workflow, then push the `<dir>/vX.Y.Z` tag.
 - **Spec Kit integration**: every `plan.md` "Constitution Check" MUST evaluate Principles I–V
@@ -211,7 +183,8 @@ inherited by every project that imports the module.
 
 - This constitution supersedes all other development practices and conventions in this
   repository. Agent runtime guidance files (e.g. `CLAUDE.md`) MUST NOT contradict it.
-- **Amendments** are made by editing this file in a dedicated change with commit message
+- **Amendments** are made by editing this file in a dedicated change (a dedicated pull request,
+  hence a dedicated squash commit) with commit message
   `docs: amend constitution to vX.Y.Z (<summary>)`. Each amendment MUST state its rationale and
   include a migration note when existing modules become non-compliant.
 - **Versioning policy** for this document follows Semantic Versioning:
@@ -225,4 +198,4 @@ inherited by every project that imports the module.
 - **Periodic review**: the constitution MUST be reviewed at each new major Go release (about
   every six months) to update the toolchain support policy and tooling requirements.
 
-**Version**: 1.1.0 | **Ratified**: 2026-10-16 | **Last Amended**: 2026-10-16
+**Version**: 1.2.0 | **Ratified**: 2026-10-16 | **Last Amended**: 2026-10-16
