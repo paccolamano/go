@@ -88,13 +88,21 @@ Close the PR and delete the scratch branch afterwards. Nothing from it is merged
 
 ## 4. Release (User Story 3) — on a fork or scratch repository only
 
+GitHub does not allow forking your own repository, so use a private scratch repository. Pushing
+its `main` adds workflow files, which needs a `gh` token with the `workflow` scope; deleting the
+repository afterwards needs `delete_repo`
+(`gh auth refresh -h github.com -s workflow,delete_repo`, removable afterwards with
+`--remove-scopes`). Push tags **one at a time**: GitHub creates no workflow events when more
+than three tags are pushed at once.
+
 ```bash
-gh repo fork paccolamano/go --clone=false   # or use a scratch repository
-# On the fork's main: add module alpha with CHANGELOG section "## [0.1.0] - 2026-10-16"
-git tag alpha/v0.1.0 && git push fork alpha/v0.1.0
+gh repo create paccolamano/go-release-sandbox --private
+git push https://github.com/paccolamano/go-release-sandbox.git main
+# On the scratch repository's main: add module alpha with CHANGELOG section "## [0.1.0] - 2026-10-16"
+git tag alpha/v0.1.0 && git push https://github.com/paccolamano/go-release-sandbox.git alpha/v0.1.0
 ```
 
-| Tag pushed on the fork | Expected result |
+| Tag pushed on the scratch repository | Expected result |
 |------------------------|-----------------|
 | `alpha/v0.1.0` | release `alpha/v0.1.0`, notes = changelog section, asset `alpha-v0.1.0.cdx.json` |
 | `alpha/v0.2.0-rc.1` (with changelog section) | published as a pre-release |

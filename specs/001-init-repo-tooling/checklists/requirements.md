@@ -44,3 +44,15 @@
   scripts, action versions), which is left to `/speckit-plan`.
 - "Non-technical stakeholders": the audience of this infrastructure feature is the repository
   maintainer; the spec states outcomes (verdicts, statuses, releases) rather than mechanisms.
+- Constitution v1.2.0 (squash merge only): FR-032 now checks only the pull request title, and the
+  new FR-043 covers the branch protection definition.
+- Validation (2026-10-16):
+  - PR #1 ran all 15 required statuses to green and was squash-merged. Its first run showed that
+    Bash 3.2 cannot parse a `case` inside `$( ... )`; this was fixed and documented.
+  - Branch protection (`main-protection` ruleset) and the repository merge settings are applied.
+    The `skip-changelog` label exists.
+  - The release workflow was validated in a private scratch repository, since deleted: valid
+    release, pre-release, three rejected tags, tags outside the filter, and an idempotent
+    re-run. Forking your own repository is not possible, and pushing more than three tags at
+    once creates no workflow events; the quickstart now says both.
+  - Not executed, by maintainer decision: the failure rows of quickstart §3.

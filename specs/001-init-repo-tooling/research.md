@@ -66,7 +66,7 @@ that date (cool-down policy, see R-03).
 | `actions/checkout` | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` | |
 | `actions/setup-go` | v7.0.0 | `b7ad1dad31e06c5925ef5d2fc7ad053ef454303e` | |
 | `actions/upload-artifact` | v7.0.1 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | |
-| `actions/download-artifact` | v8.0.1 | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` | check that it reads v7 uploads during implementation |
+| `actions/download-artifact` | v8.0.1 | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` | verified on 2026-10-16: reads the v7.0.1 uploads (release workflow run) |
 | `golangci/golangci-lint-action` | v9.3.0 | `ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a` | used with `install-only: true` |
 | golangci-lint | v2.14.0 | version in `versions.env` | released 2026-09-24 |
 | gorelease | `v0.0.0-20260824195058-e88cd73687aa` | pseudo-version in `versions.env` | `golang.org/x/exp/cmd/gorelease`, last change 2026-08-24 |
