@@ -6,3 +6,8 @@
 *.cdx.json
 # Coverage profiles written by ad-hoc go test runs.
 cover.out
+# Go build and test artifacts.
+*.test
+*.exe
+*.out
+vendor/
