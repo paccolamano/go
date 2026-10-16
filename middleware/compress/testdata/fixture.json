@@ -1,0 +1,462 @@
+{
+  "items": [
+    {
+      "id": 1000,
+      "name": "Product 000",
+      "category": "books",
+      "price": {
+        "amount": 9.99,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 500,
+        "url": "https://shop.example.com/sellers/500"
+      },
+      "available": false
+    },
+    {
+      "id": 1001,
+      "name": "Product 001",
+      "category": "music",
+      "price": {
+        "amount": 11.49,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 501,
+        "url": "https://shop.example.com/sellers/501"
+      },
+      "available": true
+    },
+    {
+      "id": 1002,
+      "name": "Product 002",
+      "category": "garden",
+      "price": {
+        "amount": 12.99,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale",
+        "popular"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 502,
+        "url": "https://shop.example.com/sellers/502"
+      },
+      "available": true
+    },
+    {
+      "id": 1003,
+      "name": "Product 003",
+      "category": "tools",
+      "price": {
+        "amount": 14.49,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 503,
+        "url": "https://shop.example.com/sellers/503"
+      },
+      "available": true
+    },
+    {
+      "id": 1004,
+      "name": "Product 004",
+      "category": "toys",
+      "price": {
+        "amount": 15.99,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 504,
+        "url": "https://shop.example.com/sellers/504"
+      },
+      "available": false
+    },
+    {
+      "id": 1005,
+      "name": "Product 005",
+      "category": "books",
+      "price": {
+        "amount": 17.49,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale",
+        "popular"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 505,
+        "url": "https://shop.example.com/sellers/505"
+      },
+      "available": true
+    },
+    {
+      "id": 1006,
+      "name": "Product 006",
+      "category": "music",
+      "price": {
+        "amount": 18.99,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 506,
+        "url": "https://shop.example.com/sellers/506"
+      },
+      "available": true
+    },
+    {
+      "id": 1007,
+      "name": "Product 007",
+      "category": "garden",
+      "price": {
+        "amount": 20.49,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 500,
+        "url": "https://shop.example.com/sellers/500"
+      },
+      "available": true
+    },
+    {
+      "id": 1008,
+      "name": "Product 008",
+      "category": "tools",
+      "price": {
+        "amount": 21.99,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale",
+        "popular"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 501,
+        "url": "https://shop.example.com/sellers/501"
+      },
+      "available": false
+    },
+    {
+      "id": 1009,
+      "name": "Product 009",
+      "category": "toys",
+      "price": {
+        "amount": 23.49,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 502,
+        "url": "https://shop.example.com/sellers/502"
+      },
+      "available": true
+    },
+    {
+      "id": 1010,
+      "name": "Product 010",
+      "category": "books",
+      "price": {
+        "amount": 24.99,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 503,
+        "url": "https://shop.example.com/sellers/503"
+      },
+      "available": true
+    },
+    {
+      "id": 1011,
+      "name": "Product 011",
+      "category": "music",
+      "price": {
+        "amount": 26.49,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale",
+        "popular"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 504,
+        "url": "https://shop.example.com/sellers/504"
+      },
+      "available": true
+    },
+    {
+      "id": 1012,
+      "name": "Product 012",
+      "category": "garden",
+      "price": {
+        "amount": 27.99,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 505,
+        "url": "https://shop.example.com/sellers/505"
+      },
+      "available": false
+    },
+    {
+      "id": 1013,
+      "name": "Product 013",
+      "category": "tools",
+      "price": {
+        "amount": 29.49,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 506,
+        "url": "https://shop.example.com/sellers/506"
+      },
+      "available": true
+    },
+    {
+      "id": 1014,
+      "name": "Product 014",
+      "category": "toys",
+      "price": {
+        "amount": 30.99,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale",
+        "popular"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 500,
+        "url": "https://shop.example.com/sellers/500"
+      },
+      "available": true
+    },
+    {
+      "id": 1015,
+      "name": "Product 015",
+      "category": "books",
+      "price": {
+        "amount": 32.49,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 501,
+        "url": "https://shop.example.com/sellers/501"
+      },
+      "available": true
+    },
+    {
+      "id": 1016,
+      "name": "Product 016",
+      "category": "music",
+      "price": {
+        "amount": 33.99,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 502,
+        "url": "https://shop.example.com/sellers/502"
+      },
+      "available": false
+    },
+    {
+      "id": 1017,
+      "name": "Product 017",
+      "category": "garden",
+      "price": {
+        "amount": 35.49,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale",
+        "popular"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 503,
+        "url": "https://shop.example.com/sellers/503"
+      },
+      "available": true
+    },
+    {
+      "id": 1018,
+      "name": "Product 018",
+      "category": "tools",
+      "price": {
+        "amount": 36.99,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 504,
+        "url": "https://shop.example.com/sellers/504"
+      },
+      "available": true
+    },
+    {
+      "id": 1019,
+      "name": "Product 019",
+      "category": "toys",
+      "price": {
+        "amount": 38.49,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 505,
+        "url": "https://shop.example.com/sellers/505"
+      },
+      "available": true
+    },
+    {
+      "id": 1020,
+      "name": "Product 020",
+      "category": "books",
+      "price": {
+        "amount": 39.99,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale",
+        "popular"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 506,
+        "url": "https://shop.example.com/sellers/506"
+      },
+      "available": false
+    },
+    {
+      "id": 1021,
+      "name": "Product 021",
+      "category": "music",
+      "price": {
+        "amount": 41.49,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 500,
+        "url": "https://shop.example.com/sellers/500"
+      },
+      "available": true
+    },
+    {
+      "id": 1022,
+      "name": "Product 022",
+      "category": "garden",
+      "price": {
+        "amount": 42.99,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 501,
+        "url": "https://shop.example.com/sellers/501"
+      },
+      "available": true
+    },
+    {
+      "id": 1023,
+      "name": "Product 023",
+      "category": "tools",
+      "price": {
+        "amount": 44.49,
+        "currency": "EUR"
+      },
+      "tags": [
+        "new",
+        "sale",
+        "popular"
+      ],
+      "description": "A sample product used to exercise response compression in tests.",
+      "seller": {
+        "id": 502,
+        "url": "https://shop.example.com/sellers/502"
+      },
+      "available": true
+    }
+  ],
+  "page": 1,
+  "total": 24
+}
