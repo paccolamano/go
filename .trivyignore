@@ -1,0 +1,7 @@
+# Trivy suppressions (pull request gate 4, vulnerabilities).
+#
+# One advisory ID per line (e.g. CVE-2026-12345 or GHSA-xxxx-xxxx-xxxx), each
+# preceded by a "#" comment stating the justification: why the vulnerable code
+# path is unreachable or what mitigates it, and when the entry will be
+# reviewed. Keep entries as narrow as possible and remove them as soon as a
+# fixed version is available.

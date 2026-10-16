@@ -1,0 +1,19 @@
+# Semgrep ignore list (pull request gate 7). gitignore syntax.
+#
+# This file replaces Semgrep's built-in defaults, so the defaults this
+# repository needs are listed again below. Every additional entry needs a
+# comment with its justification. Prefer narrow inline "nosemgrep: <rule-id>"
+# comments, also justified, over ignoring whole paths.
+
+# Version control metadata and vendored third-party code.
+.git/
+vendor/
+
+# Design documents (Markdown, no executable code).
+specs/
+
+# Test fixtures and shims for the tooling scripts.
+scripts/tests/
+
+# Go test fixtures, which may intentionally contain unsafe patterns.
+**/testdata/

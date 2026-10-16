@@ -1,0 +1,342 @@
+# Pull request gates (constitution "Pull request gates" 1-8, plus the
+# structural and cross-platform checks). Every job runs on every pull request
+# and reports a conclusive status; jobs scoped to touched modules compute that
+# list themselves and never depend on another job, because a job skipped after
+# a failed dependency can count as passing for branch protection. The required
+# status names are listed in specs/001-init-repo-tooling/contracts/ci-checks.md.
+name: pr
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  GOWORK: "off"
+  GOTOOLCHAIN: local
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      go-versions: ${{ steps.versions.outputs.go-versions }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the supported Go versions
+        id: versions
+        run: echo "go-versions=$(scripts/modules.sh json-go-versions)" >> "$GITHUB_OUTPUT"
+
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Load pinned versions
+        run: grep -v '^#' versions.env | grep . >> "$GITHUB_ENV"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION_NEWEST }}.x
+          cache: false
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          install-only: true
+      - name: Find touched modules
+        id: modules
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: echo "touched=$(scripts/modules.sh touched "$BASE_SHA" "$HEAD_SHA" | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+      - name: Lint touched modules
+        env:
+          TOUCHED: ${{ steps.modules.outputs.touched }}
+        run: |
+          read -r -a modules <<< "$TOUCHED"
+          scripts/lint.sh "${modules[@]}"
+
+  test-go:
+    name: test (go ${{ matrix.go }})
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ${{ fromJSON(needs.setup.outputs.go-versions) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ matrix.go }}.x
+          cache: false
+      - name: Find touched modules
+        id: modules
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: echo "touched=$(scripts/modules.sh touched "$BASE_SHA" "$HEAD_SHA" | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+      - name: Test touched modules
+        env:
+          TOUCHED: ${{ steps.modules.outputs.touched }}
+        run: |
+          read -r -a modules <<< "$TOUCHED"
+          scripts/test.sh "${modules[@]}"
+
+  test:
+    needs: test-go
+    if: always()
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require every Go version to pass
+        env:
+          RESULT: ${{ needs.test-go.result }}
+        run: |
+          echo "test (go ...) result: $RESULT"
+          test "$RESULT" = success
+
+  tidy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load pinned versions
+        run: grep -v '^#' versions.env | grep . >> "$GITHUB_ENV"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION_NEWEST }}.x
+          cache: false
+      - name: Check that every module is tidy
+        run: scripts/tidy-check.sh --all
+
+  api-compat:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Load pinned versions
+        run: grep -v '^#' versions.env | grep . >> "$GITHUB_ENV"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION_NEWEST }}.x
+          cache: false
+      - name: Install gorelease
+        run: go install "golang.org/x/exp/cmd/gorelease@${GORELEASE_VERSION}"
+      - name: Find touched modules
+        id: modules
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: echo "touched=$(scripts/modules.sh touched "$BASE_SHA" "$HEAD_SHA" | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+      - name: Check API compatibility of touched modules
+        env:
+          TOUCHED: ${{ steps.modules.outputs.touched }}
+        run: |
+          read -r -a modules <<< "$TOUCHED"
+          scripts/apicompat.sh "${modules[@]}"
+
+  vulnerabilities:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Trivy (pinned, SHA-256 verified)
+        run: |
+          scripts/install-tool.sh trivy "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Scan module dependencies for HIGH and CRITICAL vulnerabilities
+        run: trivy fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --ignorefile .trivyignore .
+
+  sbom:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Trivy (pinned, SHA-256 verified)
+        run: |
+          scripts/install-tool.sh trivy "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Generate one CycloneDX SBOM per module
+        run: |
+          mkdir -p sbom
+          modules=$(scripts/modules.sh list)
+          if [ -z "$modules" ]; then
+            echo "no modules found, no SBOM to generate"
+            exit 0
+          fi
+          for m in $modules; do
+            trivy fs --format cyclonedx --output "sbom/$(printf '%s' "$m" | tr / _).cdx.json" "$m"
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom
+          path: sbom/
+          retention-days: 90
+          if-no-files-found: ignore
+
+  secrets:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Gitleaks (pinned, SHA-256 verified)
+        run: |
+          scripts/install-tool.sh gitleaks "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Scan the pull request commits for secrets
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: gitleaks git --log-opts="$BASE_SHA..$HEAD_SHA" --redact --verbose --exit-code 1 .
+
+  semgrep:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load pinned versions
+        run: grep -v '^#' versions.env | grep . >> "$GITHUB_ENV"
+      - name: Run Semgrep (pinned image)
+        env:
+          # Registry rulesets; changing this list counts as a scanner configuration change.
+          SEMGREP_RULES: p/golang p/trailofbits p/github-actions
+        run: |
+          set --
+          for rules in $SEMGREP_RULES; do
+            set -- "$@" --config "$rules"
+          done
+          docker run --rm -v "$PWD:/src" -w /src "$SEMGREP_IMAGE" \
+            semgrep scan --metrics=off --error "$@"
+
+  bearer:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Bearer (pinned, SHA-256 verified)
+        run: |
+          scripts/install-tool.sh bearer "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Scan for security and privacy findings
+        run: |
+          # Bearer errors out when no file is in a language it supports.
+          if [ -z "$(git ls-files '*.go' '*.java' '*.js' '*.jsx' '*.ts' '*.tsx' '*.php' '*.py' '*.rb')" ]; then
+            echo "no source files in a language Bearer supports; nothing to scan"
+            exit 0
+          fi
+          bearer scan . --config-file bearer.yml
+
+  structure:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check module structure and the exceptions file
+        run: scripts/structure-check.sh --all
+
+  cross-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Load pinned versions
+        run: grep -v '^#' versions.env | grep . >> "$GITHUB_ENV"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION_NEWEST }}.x
+          cache: false
+      - name: Find touched modules
+        id: modules
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: echo "touched=$(scripts/modules.sh touched "$BASE_SHA" "$HEAD_SHA" | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+      - name: Build and vet touched modules for every supported platform
+        env:
+          TOUCHED: ${{ steps.modules.outputs.touched }}
+        run: |
+          read -r -a modules <<< "$TOUCHED"
+          scripts/cross-build.sh "${modules[@]}"
+
+  scripts:
+    name: scripts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load pinned versions
+        run: grep -v '^#' versions.env | grep . >> "$GITHUB_ENV"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION_NEWEST }}.x
+          cache: false
+      - name: Run the tooling self-tests and shellcheck
+        if: runner.os == 'Linux'
+        run: |
+          command -v shellcheck >/dev/null || sudo apt-get install -y --no-install-recommends shellcheck
+          make scripts-test
+      - name: Run the tooling self-tests with Bash 3.2 and the BSD userland
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p "$RUNNER_TEMP/bash32"
+          ln -sf /bin/bash "$RUNNER_TEMP/bash32/bash"
+          PATH="$RUNNER_TEMP/bash32:$PATH" /bin/bash scripts/tests/run.sh
