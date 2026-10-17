@@ -7,6 +7,8 @@ and this module adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-17
+
 ### Added
 
 - Drop-in parity with the standard `errors` package: `Is`, `As`, `AsType`, `Unwrap` and
