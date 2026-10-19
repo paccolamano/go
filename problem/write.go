@@ -23,10 +23,14 @@ import (
 //     was invalid or its status is outside 400–599, is replaced by the generic
 //     server error.
 //
-// The document is complete before anything is written. Headers already set on
-// w are kept, except Content-Type, which becomes [MediaType]. A HEAD request
-// gets the status and the headers, and no body. Once the response has started,
-// its status can no longer change: call Write before writing anything else.
+// The document is complete before anything is written. Write removes the
+// headers that describe the body the handler meant to send: Content-Length,
+// Content-Encoding, Content-Range, ETag, Last-Modified, Content-Disposition and
+// Trailer. It sets Content-Type to [MediaType], and keeps every other header
+// already set on w, such as Retry-After, Content-Language, Cache-Control and
+// Vary. A HEAD request gets the status and the headers, and no body. Once the
+// response has started, its status and headers can no longer change: call Write
+// before writing anything else.
 //
 // The returned error reports a replaced problem (it wraps [ErrInvalid]) and any
 // failure to write the body. It is nil when err was written as intended,
@@ -52,7 +56,11 @@ func Write(w http.ResponseWriter, r *http.Request, err error) error {
 		body, _ = e.document()
 	}
 
-	w.Header().Set("Content-Type", MediaType)
+	h := w.Header()
+	for _, name := range representationHeaders() {
+		h.Del(name)
+	}
+	h.Set("Content-Type", MediaType)
 	w.WriteHeader(e.status)
 	if r != nil && r.Method == http.MethodHead {
 		return report
@@ -61,6 +69,14 @@ func Write(w http.ResponseWriter, r *http.Request, err error) error {
 		return errors.Join(report, fmt.Errorf("problem: write response: %w", werr))
 	}
 	return report
+}
+
+// representationHeaders describe the body that the handler meant to send. They
+// contradict the problem document, so Write removes them. The list is the one
+// the recovery middleware of github.com/paccolamano/go/middleware removes.
+func representationHeaders() []string {
+	return []string{"Content-Length", "Content-Encoding", "Content-Range",
+		"ETag", "Last-Modified", "Content-Disposition", "Trailer"}
 }
 
 // document encodes e as a problem document, or returns why it cannot.

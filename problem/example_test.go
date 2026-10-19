@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -73,7 +74,10 @@ func ExampleWithCause() {
 
 	// ...but never in the response.
 	rec := httptest.NewRecorder()
-	_ = problem.Write(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil), e)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+	if err := problem.Write(rec, req, e); err != nil {
+		slog.ErrorContext(req.Context(), "write problem", "err", err)
+	}
 	fmt.Println(rec.Body)
 	// Output:
 	// true
@@ -101,7 +105,10 @@ func ExampleWrite_error() {
 	err := errors.New(`pq: password authentication failed for user "admin"`)
 
 	rec := httptest.NewRecorder()
-	_ = problem.Write(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil), err)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+	if werr := problem.Write(rec, req, err); werr != nil {
+		slog.ErrorContext(req.Context(), "write problem", "err", werr)
+	}
 	fmt.Println(rec.Code)
 	fmt.Println(rec.Body)
 	// Output:
@@ -250,7 +257,9 @@ func ExampleWrite() {
 	}
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		if err := send(); err != nil {
-			_ = problem.Write(w, r, fmt.Errorf("send message: %w", err))
+			if werr := problem.Write(w, r, fmt.Errorf("send message: %w", err)); werr != nil {
+				slog.ErrorContext(r.Context(), "write problem", "err", werr)
+			}
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -263,4 +272,34 @@ func ExampleWrite() {
 	// Output:
 	// 403 application/problem+json
 	// {"type":"https://example.com/probs/out-of-credit","title":"You do not have enough credit.","status":403,"detail":"Your current balance is 30, but that costs 50."}
+}
+
+func ExamplePointer() {
+	fmt.Println(problem.Pointer("items", "0", "qty"))
+	fmt.Println(problem.Pointer())
+	fmt.Println(problem.Pointer("a/b", "m~n"))
+	fmt.Println(problem.Pointer("città"))
+	// Output:
+	// #/items/0/qty
+	// #
+	// #/a~1b/m~0n
+	// #/citt%C3%A0
+}
+
+func ExampleError_Errors() {
+	// A validation problem returned by another API.
+	p, err := problem.Parse([]byte(`{"type":"https://example.net/validation-error","title":"Your request is not valid.",` +
+		`"errors":[{"detail":"must be a positive integer","pointer":"#/age"},` +
+		`{"detail":"must be 'green', 'red' or 'blue'","pointer":"#/profile/color"}]}`))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	items, _ := p.Errors()
+	for _, item := range items {
+		fmt.Printf("%s: %s\n", item.Pointer, item.Detail)
+	}
+	// Output:
+	// #/age: must be a positive integer
+	// #/profile/color: must be 'green', 'red' or 'blue'
 }

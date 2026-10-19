@@ -106,6 +106,33 @@ func (e *Error) Error() string {
 // Unwrap returns the internal cause set with [WithCause], or nil.
 func (e *Error) Unwrap() error { return e.cause }
 
+// With returns a copy of e with the options applied in order. e is not
+// modified.
+//
+// The copy owns its extension values, so concurrent calls on the same problem
+// are safe, and no change made through one problem reaches the other. The copy
+// keeps the internal cause, so errors.Is, errors.As and [Type.Match] find the
+// same errors in it, unless an option sets a new cause. A failure recorded while
+// e was built carries over, and [Write] reports it. A failure caused by opts is
+// recorded on the copy only. With on a nil *Error returns nil.
+//
+// With lets the HTTP layer add per-request members, such as a request ID, to a
+// problem that another layer built.
+func (e *Error) With(opts ...Option) *Error {
+	if e == nil {
+		return nil
+	}
+	c := *e
+	if e.ext != nil {
+		c.ext = make(map[string]json.RawMessage, len(e.ext))
+		for name, raw := range e.ext {
+			c.ext[name] = slices.Clone(raw)
+		}
+	}
+	c.apply(opts)
+	return &c
+}
+
 // apply applies the options in order, skipping nil ones.
 func (e *Error) apply(opts []Option) {
 	for _, opt := range opts {

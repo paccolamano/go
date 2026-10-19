@@ -1,8 +1,11 @@
 package problem_test
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -61,25 +64,167 @@ func TestWrite_ReplacedTitle(t *testing.T) {
 	wantResponse(t, rec, http.StatusNotFound, `{"type":"about:blank","title":"Risorsa non trovata","status":404}`)
 }
 
+// representationHeaders are the headers Write removes, with a value a handler
+// might have set for the body it meant to send. Trailer has two values.
+var representationHeaders = []struct {
+	name   string
+	values []string
+}{
+	{"Content-Length", []string{"5"}},
+	{"Content-Encoding", []string{"gzip"}},
+	{"Content-Range", []string{"bytes 0-4/10"}},
+	{"ETag", []string{`"v1"`}},
+	{"Last-Modified", []string{"Mon, 19 Oct 2026 07:00:00 GMT"}},
+	{"Content-Disposition", []string{`attachment; filename="a.bin"`}},
+	{"Trailer", []string{"X-Checksum", "X-Count"}},
+}
+
+// setRepresentationHeaders sets every header of representationHeaders on h.
+func setRepresentationHeaders(h http.Header) {
+	for _, rh := range representationHeaders {
+		for _, v := range rh.values {
+			h.Add(rh.name, v)
+		}
+	}
+}
+
+// wantNoRepresentationHeaders fails if any header of representationHeaders is
+// still in h.
+func wantNoRepresentationHeaders(tb testing.TB, h http.Header) {
+	tb.Helper()
+	for _, rh := range representationHeaders {
+		if got := h.Values(rh.name); len(got) > 0 {
+			tb.Errorf("%s = %q, want it removed", rh.name, got)
+		}
+	}
+}
+
 func TestWrite_HeadersKept(t *testing.T) {
+	kept := map[string]string{
+		"Retry-After":            "120",
+		"Content-Language":       "it",
+		"Cache-Control":          "no-store",
+		"Vary":                   "Accept-Language",
+		"X-Content-Type-Options": "nosniff",
+	}
 	rec := httptest.NewRecorder()
-	rec.Header().Set("Retry-After", "120")
-	rec.Header().Set("Content-Language", "it")
+	for name, v := range kept {
+		rec.Header().Set(name, v)
+	}
 	rec.Header().Set("Content-Type", "text/plain")
+	setRepresentationHeaders(rec.Header())
 	if err := problem.Write(rec, newRequest(t, http.MethodGet, "/"), problem.Status(http.StatusServiceUnavailable)); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
-	if got := rec.Header().Get("Retry-After"); got != "120" {
-		t.Errorf("Retry-After = %q, want 120", got)
-	}
-	if got := rec.Header().Get("Content-Language"); got != "it" {
-		t.Errorf("Content-Language = %q, want it", got)
+	for name, want := range kept {
+		if got := rec.Header().Values(name); len(got) != 1 || got[0] != want {
+			t.Errorf("%s = %q, want [%q]", name, got, want)
+		}
 	}
 	if got := rec.Header().Get("Content-Type"); got != problem.MediaType {
 		t.Errorf("Content-Type = %q, want %q", got, problem.MediaType)
 	}
-	if got := rec.Header().Get("Content-Length"); got != "" {
-		t.Errorf("Content-Length = %q, want it unset", got)
+	wantNoRepresentationHeaders(t, rec.Header())
+}
+
+func TestWrite_RepresentationHeaders(t *testing.T) {
+	const unavailable = `{"type":"about:blank","title":"Service Unavailable","status":503}`
+	for _, rh := range representationHeaders {
+		t.Run(rh.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			for _, v := range rh.values {
+				rec.Header().Add(rh.name, v)
+			}
+			if err := problem.Write(rec, newRequest(t, http.MethodGet, "/"), problem.Status(http.StatusServiceUnavailable)); err != nil {
+				t.Fatalf("Write: %v", err)
+			}
+			if got := rec.Header().Values(rh.name); len(got) > 0 {
+				t.Errorf("%s = %q, want it removed", rh.name, got)
+			}
+			wantResponse(t, rec, http.StatusServiceUnavailable, unavailable)
+		})
+	}
+
+	// Every response Write sends loses the headers: the generic server error
+	// replacing an invalid problem, a plain error or nil, and HEAD responses.
+	tests := []struct {
+		name   string
+		method string
+		err    error
+		code   int
+		body   string
+	}{
+		{"invalid instance", http.MethodGet, problem.Status(http.StatusConflict, problem.WithInstance("/a b")),
+			http.StatusInternalServerError, serverDocument},
+		{"plain error", http.MethodGet, errors.New("boom"), http.StatusInternalServerError, serverDocument},
+		{"nil error", http.MethodGet, nil, http.StatusInternalServerError, serverDocument},
+		{"HEAD", http.MethodHead, problem.Status(http.StatusServiceUnavailable), http.StatusServiceUnavailable, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			setRepresentationHeaders(rec.Header())
+			_ = problem.Write(rec, newRequest(t, tt.method, "/"), tt.err)
+			if rec.Code != tt.code {
+				t.Errorf("code = %d, want %d", rec.Code, tt.code)
+			}
+			if got := rec.Body.String(); got != tt.body {
+				t.Errorf("body = %s, want %s", got, tt.body)
+			}
+			wantNoRepresentationHeaders(t, rec.Header())
+		})
+	}
+}
+
+// TestWrite_RealServer goes through a real server and client: a leftover
+// Content-Length truncates the response there, and a leftover Content-Encoding
+// makes the client decompress plain JSON. A recorder shows neither.
+func TestWrite_RealServer(t *testing.T) {
+	const notFound = `{"type":"about:blank","title":"Not Found","status":404}`
+	tests := []struct{ name, value string }{
+		{"Content-Length", "5"},
+		{"Content-Encoding", "gzip"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errc := make(chan error, 1)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set(tt.name, tt.value)
+				errc <- problem.Write(w, r, problem.Status(http.StatusNotFound))
+			}))
+			defer srv.Close()
+
+			// The client's transport asks for gzip and decompresses on its own.
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL, nil)
+			if err != nil {
+				t.Fatalf("NewRequest: %v", err)
+			}
+			resp, err := srv.Client().Do(req)
+			if err != nil {
+				t.Fatalf("Do: %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+			body, rerr := io.ReadAll(resp.Body)
+
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("status = %d, want 404", resp.StatusCode)
+			}
+			if rerr != nil {
+				t.Errorf("read body: %v", rerr)
+			}
+			if string(body) != notFound {
+				t.Errorf("body = %q, want %q", body, notFound)
+			}
+			if got := resp.Header.Get("Content-Encoding"); got != "" {
+				t.Errorf("Content-Encoding = %q, want none", got)
+			}
+			if got := resp.Header.Get("Content-Type"); got != problem.MediaType {
+				t.Errorf("Content-Type = %q, want %q", got, problem.MediaType)
+			}
+			if werr := <-errc; werr != nil {
+				t.Errorf("Write: %v", werr)
+			}
+		})
 	}
 }
 
@@ -366,9 +511,14 @@ type rejection struct {
 }
 
 func TestWrite_RejectFuncSnippet(t *testing.T) {
-	// The body of the refusal function shown in README.md and doc.go.
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	// The refusal function shown in README.md and doc.go, verbatim but for the
+	// type of rej.
 	reject := func(w http.ResponseWriter, r *http.Request, rej rejection) {
-		_ = problem.Write(w, r, problem.Status(rej.Status))
+		if err := problem.Write(w, r, problem.Status(rej.Status, problem.WithCause(rej.Err))); err != nil {
+			logger.ErrorContext(r.Context(), "write problem", "err", err)
+		}
 	}
 	for _, code := range []int{
 		http.StatusRequestEntityTooLarge,
@@ -389,6 +539,62 @@ func TestWrite_RejectFuncSnippet(t *testing.T) {
 				t.Errorf("Retry-After = %q, want 30", rec.Header().Get("Retry-After"))
 			}
 			wantAbsent(t, rec, "refused")
+			if logs.Len() != 0 {
+				t.Errorf("logs = %q, want none", logs.String())
+			}
+		})
+	}
+}
+
+func TestWrite_ErrorLevelsSnippet(t *testing.T) {
+	recorder := func() http.ResponseWriter { return httptest.NewRecorder() }
+	tests := []struct {
+		name    string
+		w       func() http.ResponseWriter
+		err     error
+		want    []string
+		notWant []string
+	}{
+		{
+			"invalid problem", recorder, problem.Status(http.StatusConflict, problem.WithInstance("/a b")),
+			[]string{"level=ERROR", `msg="problem replaced by a generic 500"`}, nil,
+		},
+		{
+			"client gone", func() http.ResponseWriter { return &failingWriter{} }, creditOccurrence(),
+			[]string{"level=DEBUG", `msg="write problem"`}, []string{"level=ERROR"},
+		},
+		{"success", recorder, creditOccurrence(), nil, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			// The writeProblem helper shown in README.md, verbatim.
+			writeProblem := func(w http.ResponseWriter, r *http.Request, err error) {
+				werr := problem.Write(w, r, err)
+				switch {
+				case errors.Is(werr, problem.ErrInvalid): // a bug: fix how the problem is built
+					logger.ErrorContext(r.Context(), "problem replaced by a generic 500", "err", werr)
+				case werr != nil: // usually the client went away
+					logger.DebugContext(r.Context(), "write problem", "err", werr)
+				}
+			}
+			writeProblem(tt.w(), newRequest(t, http.MethodGet, "/"), tt.err)
+
+			got := logs.String()
+			if tt.want == nil && got != "" {
+				t.Errorf("logs = %q, want none", got)
+			}
+			for _, s := range tt.want {
+				if !strings.Contains(got, s) {
+					t.Errorf("logs = %q, want %s", got, s)
+				}
+			}
+			for _, s := range tt.notWant {
+				if strings.Contains(got, s) {
+					t.Errorf("logs = %q, want no %s", got, s)
+				}
+			}
 		})
 	}
 }

@@ -44,15 +44,32 @@
 //	// In the handler:
 //	if err != nil {
 //		logger.ErrorContext(ctx, "send message", "err", err)
-//		_ = problem.Write(w, r, err)
+//		if werr := problem.Write(w, r, err); werr != nil {
+//			logger.ErrorContext(ctx, "write problem", "err", werr)
+//		}
 //		return
 //	}
 //
+// Never discard the error that Write returns. An error wrapping [ErrInvalid]
+// means that the problem was built incorrectly, for example with an instance
+// containing a space, and that Write sent the generic server error instead:
+// that is a bug to fix. Any other error usually means that the client went away
+// while the response was being sent.
+//
 // The response carries the problem's status code, the media type [MediaType]
-// and a compact document whose members always appear in the same order. Headers
-// set before Write, such as Retry-After, are kept. A HEAD request gets no body.
-// Once a handler has written a status or a body, the status can no longer
-// change, so call Write before writing anything else.
+// and a compact document whose members always appear in the same order. Write
+// removes the headers that describe the body the handler meant to send:
+// Content-Length, Content-Encoding, Content-Range, ETag, Last-Modified,
+// Content-Disposition and Trailer. Every other header set before Write, such as
+// Retry-After, Content-Language, Cache-Control and Vary, is kept. A HEAD request
+// gets no body. Once a handler has written a status or a body, the status can
+// no longer change, so call Write before writing anything else.
+//
+// An occurrence cannot be modified, but [Error.With] derives a copy with more
+// members. A service layer can build a problem without knowing the request,
+// and the HTTP layer can add per-request members, such as a request ID, when it
+// writes the problem. The original is not modified, and the copy keeps the
+// internal cause.
 //
 // # What never reaches the client
 //
@@ -76,6 +93,19 @@
 // [Type.Match] reports whether a problem of a given type is anywhere in an error
 // tree, looking past problems of other types.
 //
+// # Validation errors
+//
+// RFC 9457 §3 reports several errors of the same type in one problem, through
+// an "errors" extension that lists, for each error, a "detail" and a JSON
+// Pointer (RFC 6901) to the offending member. [WithErrors] writes that list from
+// [Item] values, and [Error.Errors] reads it back. [Pointer] builds each pointer
+// from member names and array indexes, and escapes them:
+//
+//	problem.Item{Detail: "must be a positive integer", Pointer: problem.Pointer("age")}
+//
+// WithErrors owns the "errors" member: if a key named "errors" also sets it,
+// the option applied last wins.
+//
 // # Reading problem details
 //
 // [Read] reads the problem document of a response from another API, and [Parse]
@@ -94,10 +124,12 @@
 // # Using it with the middleware module
 //
 // The refusal functions of github.com/paccolamano/go/middleware answer refused
-// requests with problem details in two lines, with no dependency between the
-// two modules:
+// requests with problem details in a few lines, with no dependency between the
+// two modules. The refusal's error becomes the internal cause, for the logs:
 //
 //	reject := func(w http.ResponseWriter, r *http.Request, rej middleware.Rejection) {
-//		_ = problem.Write(w, r, problem.Status(rej.Status))
+//		if err := problem.Write(w, r, problem.Status(rej.Status, problem.WithCause(rej.Err))); err != nil {
+//			logger.ErrorContext(r.Context(), "write problem", "err", err)
+//		}
 //	}
 package problem

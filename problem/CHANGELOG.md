@@ -7,6 +7,25 @@ and this module adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- `(*Error).With`, which derives a problem with more members, for example a request ID added
+  when the problem is written. The original is not modified.
+- `Item`, `WithErrors` and `(*Error).Errors`, which write and read the validation errors of
+  RFC 9457 §3 in the `errors` extension member.
+- `Pointer`, which builds a JSON Pointer (RFC 6901) in URI fragment form, escaping the
+  reference tokens.
+
+### Fixed
+
+- `Write` removes the headers that describe the body the handler meant to send:
+  `Content-Length`, `Content-Encoding`, `Content-Range`, `ETag`, `Last-Modified`,
+  `Content-Disposition` and `Trailer`. **Behavior change**: `Write` used to keep these headers,
+  and they contradicted the problem document. For example, a leftover `Content-Length`
+  truncated the response, and a leftover `Content-Encoding: gzip` made clients fail to
+  decompress plain JSON. Every other header is still kept.
+- `Key.Lookup` returns the zero value and false for a nil `*Error`, instead of panicking.
+
 ## [0.1.0] - 2026-10-19
 
 ### Added

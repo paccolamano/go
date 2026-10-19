@@ -21,6 +21,9 @@ type Key[T any] struct {
 // "type", "title", "status", "detail" and "instance" are refused in any
 // capitalization, because some clients match member names without regard to
 // case.
+//
+// The name "errors" is accepted, but [WithErrors] owns that member (RFC 9457 §3
+// validation errors): when both set it, the option applied last wins.
 func NewKey[T any](name string) (Key[T], error) {
 	if !validExtensionName(name) {
 		return Key[T]{}, fmt.Errorf("%w: extension name %q breaks RFC 9457 §3.2 or is a standard member name", ErrInvalid, name)
@@ -51,10 +54,13 @@ func WithExtension[T any](k Key[T], v T) Option {
 }
 
 // Lookup returns the value of the extension member k in e. It returns the zero
-// value and false when the member is absent or its value does not decode into
-// T.
+// value and false when e is nil, when the member is absent, or when its value
+// does not decode into T.
 func (k Key[T]) Lookup(e *Error) (T, bool) {
 	var v T
+	if e == nil {
+		return v, false
+	}
 	raw, ok := e.ext[k.name]
 	if !ok || k.name == "" {
 		return v, false

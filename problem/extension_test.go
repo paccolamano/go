@@ -3,6 +3,7 @@ package problem_test
 import (
 	"errors"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -75,6 +76,29 @@ func TestNewKey_Undeclared(t *testing.T) {
 	}
 	if v, ok := (problem.Key[int]{}).Lookup(creditOccurrence()); ok || v != 0 {
 		t.Errorf("zero Key Lookup = %d, %v; want 0, false", v, ok)
+	}
+}
+
+func TestLookup_NilProblem(t *testing.T) {
+	// Match finds nothing in a plain error, and returns a nil problem.
+	p, _ := outOfCredit.Match(errors.New("plain"))
+	tests := []struct {
+		name   string
+		lookup func() (any, bool)
+		want   any
+	}{
+		{"nil", func() (any, bool) { return balance.Lookup(nil) }, 0},
+		{"failed Match", func() (any, bool) { return balance.Lookup(p) }, 0},
+		{"typed nil", func() (any, bool) { return accounts.Lookup((*problem.Error)(nil)) }, []string(nil)},
+		{"zero Key", func() (any, bool) { return (problem.Key[int]{}).Lookup(nil) }, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := tt.lookup()
+			if ok || !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Lookup = %#v, %v; want %#v, false", got, ok, tt.want)
+			}
+		})
 	}
 }
 
