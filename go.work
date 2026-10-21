@@ -6,4 +6,5 @@ use (
 	./middleware
 	./problem
 	./slogx
+	./sse
 )

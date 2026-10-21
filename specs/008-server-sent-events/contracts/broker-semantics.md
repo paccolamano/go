@@ -1,0 +1,95 @@
+# Contract: Broker Semantics
+
+**Module**: `github.com/paccolamano/go/sse` | **Research**: [R-09](../research.md#r-09-broker-state-and-publishing)
+to [R-13](../research.md#r-13-closing) | **Data model**: [subscription state machine](../data-model.md#subscription-state-machine-serve)
+
+## Publishing
+
+`Publish(ev, topics...)`:
+
+| Input | Outcome |
+|-------|---------|
+| broker closed | `ErrClosed` |
+| invalid event (FR-009) | `ErrInvalidEvent` |
+| no topic, or an empty topic | error; nothing recorded |
+| `ev.ID` already in the history | `ErrDuplicateID`; nothing delivered |
+| otherwise | recorded in the history (oldest entry evicted when full), offered to every subscriber of any of `topics`, once per subscriber |
+
+- An empty `ev.ID` is replaced by `<prefix>-<seq>`, where the prefix is random per broker.
+- Topics are compared exactly. Duplicates in one call count once.
+- Offers are non-blocking. A subscriber whose queue is full is removed, and its `Serve` returns
+  `ErrSlowConsumer`.
+- All subscribers see entries in the same order: the order of the history. Calls from one
+  goroutine keep their order.
+
+## Subscribing and resuming
+
+`Serve(w, r, topics...)` registers the subscription and resolves `Last-Event-ID` under one lock,
+then writes:
+
+| `Last-Event-ID` | First block | Then |
+|-----------------|-------------|------|
+| absent or empty | position = newest history ID (nothing if the history is empty) | live events |
+| found in history | — | later history entries on `topics`, in order; then live events |
+| not found, replay configured | — | replay (below) |
+| not found, no replay, reset configured | reset event with ID = newest history ID (or `id:` empty if the history is empty) | live events |
+| not found, no replay, no reset | position = newest history ID (`id:` empty if the history is empty) | live events |
+
+- `retry: <ms>` is part of the first block when `WithRetry` is configured.
+- Exactly once: history entries up to the registration come from the snapshot, later ones from
+  the subscriber's queue. Nothing is lost or repeated between them.
+- Keep-alive: during the live phase, `: keep-alive` after 15 s (by default) without any write.
+  Not while a replay function runs.
+- Outcomes:
+
+  | Cause | `Serve` returns |
+  |-------|-----------------|
+  | client disconnected, request context ended | `nil` |
+  | broker closed | `ErrClosed` |
+  | queue overflow | `ErrSlowConsumer` |
+  | write failed or timed out after the queue overflowed | `ErrSlowConsumer` (the overflow is the cause) |
+  | write timed out (the client stopped reading) | error wrapping the cause, at once |
+  | write failed on a closed connection | `nil` once net/http ends the request's context. `Serve` waits for that for up to one write timeout, then returns the error |
+  | replay failed | error wrapping the failure |
+
+  In every case the response completes with status 200.
+
+## Replay
+
+Called only when `Last-Event-ID` is not in the history:
+`fn(r.Context(), lastID, topics, send)`.
+
+| During the replay | Effect |
+|-------------------|--------|
+| `send(ev, evTopics...)` with an invalid event, no ID or no topic | returns `ErrInvalidEvent`; the replay counts as failed (FR-043) |
+| `send` with `ev.ID == lastID` | skipped |
+| `send` with no topic in common with the subscription | skipped (the broker filters, FR-039) |
+| `send` otherwise | the event is written once; its ID is remembered (the last `WithBuffer` IDs) |
+| live events published meanwhile | queued; on overflow, `send` returns an error and `Serve` returns `ErrSlowConsumer` |
+| client disconnects | the context passed to `fn` is cancelled; `send` returns an error |
+| `send` called after `fn` has returned | returns an error; nothing written |
+
+| `fn` returns | Then |
+|--------------|------|
+| `nil` | queued events whose ID was replayed are skipped; the rest are written; live loop |
+| error matching `ErrUnknownID` | reset event, or position, as in the table above; queued events; live loop |
+| any other error | no reset, no live events; the response completes; `Serve` returns an error wrapping it; the client reconnects with the identifier of the last replayed event, or the same one, and the replay runs again |
+| panics | recovered, then as for any other error, with `sse: replay panicked: <value>` |
+
+The handoff assumes that the source and the broker see events in the same order, as with several
+replicas fed by one bus. If they do not, the worst outcome is a duplicate, never a loss.
+
+## Closing
+
+| Call | Effect |
+|------|--------|
+| `Close()` | every `Serve` returns `ErrClosed`, and each response completes normally; returns at once |
+| `Close()` again | nothing |
+| `Publish` after `Close` | `ErrClosed` |
+| `Serve` after `Close` | `200` with the headers and `retry` if configured, then the end of the response; `ErrClosed` |
+
+## Several brokers
+
+Brokers that receive the same events, with the same identifiers and in the same order, resolve
+each other's identifiers (FR-037). Identifiers generated by a broker are unknown to every other
+instance, so they are treated as unresolvable, never matched to a wrong position.
