@@ -173,10 +173,10 @@ func TestHTTPServer_TLSChoice(t *testing.T) {
 		wantTLS bool
 	}{
 		{"no TLS config", nil, false},
-		{"no certificate source", &tls.Config{}, false},
-		{"certificates", &tls.Config{Certificates: []tls.Certificate{{}}}, true},
-		{"GetCertificate", &tls.Config{GetCertificate: getCert}, true},
-		{"GetConfigForClient", &tls.Config{GetConfigForClient: getConf}, true},
+		{"no certificate source", &tls.Config{MinVersion: tls.VersionTLS13}, false},
+		{"certificates", &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{{}}}, true},
+		{"GetCertificate", &tls.Config{MinVersion: tls.VersionTLS13, GetCertificate: getCert}, true},
+		{"GetConfigForClient", &tls.Config{MinVersion: tls.VersionTLS13, GetConfigForClient: getConf}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
