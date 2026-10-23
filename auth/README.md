@@ -93,7 +93,7 @@ document; `auth.WithAnonymous` lets requests without credentials through.
 ## Store
 
 `memstore` keeps state in memory, for tests and single-instance deployments. For several
-instances, adapt Redis in about twenty lines with `github.com/redis/go-redis/v9` (this module does
+instances, adapt Redis in about thirty lines with `github.com/redis/go-redis/v9` (this module does
 not depend on it):
 
 ```go
@@ -112,6 +112,11 @@ func (s redisStore) Set(ctx context.Context, key string, value []byte, ttl time.
 	return s.C.Set(ctx, key, value, ttl).Err()
 }
 
+// Replace writes only over an existing key: SET with XX.
+func (s redisStore) Replace(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
+	return s.C.SetXX(ctx, key, value, ttl).Result()
+}
+
 func (s redisStore) Delete(ctx context.Context, key string) error {
 	return s.C.Del(ctx, key).Err()
 }
@@ -127,7 +132,9 @@ func (s redisStore) Incr(ctx context.Context, key string, ttl time.Duration) (in
 ```
 
 `INCR` and `PEXPIRE` run in one script, which Redis executes atomically: two separate commands
-would leave a counter without expiry if the client died between them. Every operation touches one
+would leave a counter without expiry if the client died between them. `SET` with `XX` checks that
+the key exists and writes it in one command, so a session renewed while a logout deletes it stays
+deleted; `SetXX` reports `false`, with no error, when the key is absent. Every operation touches one
 key, so the adapter works with Redis Cluster. Keys start with `auth:`; prefix them in the adapter
 if several applications share one database.
 

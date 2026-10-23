@@ -41,6 +41,20 @@ func TestStore_Contract(t *testing.T) {
 	if got, _ := s.Get(ctx, "k"); string(got) != "v2" {
 		t.Fatalf("Set did not replace: %q", got)
 	}
+	in = []byte("v3")
+	if ok, err := s.Replace(ctx, "k", in, time.Minute); !ok || err != nil {
+		t.Fatalf("Replace(present) = %v, %v; want true, nil", ok, err)
+	}
+	in[0] = 'X'
+	if got, _ := s.Get(ctx, "k"); string(got) != "v3" {
+		t.Fatalf("Replace stored %q, want v3", got)
+	}
+	if ok, err := s.Replace(ctx, "absent", []byte("v"), time.Minute); ok || err != nil {
+		t.Fatalf("Replace(absent) = %v, %v; want false, nil", ok, err)
+	}
+	if _, err := s.Get(ctx, "absent"); !errors.Is(err, auth.ErrNotFound) {
+		t.Fatalf("Replace(absent) created the key: Get = %v", err)
+	}
 	if err := s.Delete(ctx, "k"); err != nil {
 		t.Fatal(err)
 	}
@@ -49,6 +63,9 @@ func TestStore_Contract(t *testing.T) {
 	}
 	if err := s.Set(ctx, "k", nil, 0); err == nil {
 		t.Error("Set with ttl 0 succeeded")
+	}
+	if _, err := s.Replace(ctx, "k", nil, 0); err == nil {
+		t.Error("Replace with ttl 0 succeeded")
 	}
 	if _, err := s.Incr(ctx, "c", -time.Second); err == nil {
 		t.Error("Incr with negative ttl succeeded")
@@ -65,6 +82,9 @@ func TestStore_Contract(t *testing.T) {
 	}
 	if err := s.Set(cancelled, "k", nil, time.Minute); !errors.Is(err, context.Canceled) {
 		t.Errorf("Set with cancelled ctx = %v", err)
+	}
+	if _, err := s.Replace(cancelled, "k", nil, time.Minute); !errors.Is(err, context.Canceled) {
+		t.Errorf("Replace with cancelled ctx = %v", err)
 	}
 	if err := s.Delete(cancelled, "k"); !errors.Is(err, context.Canceled) {
 		t.Errorf("Delete with cancelled ctx = %v", err)
@@ -88,6 +108,26 @@ func TestExpiry_TTL(t *testing.T) {
 		time.Sleep(time.Second)
 		if _, err := s.Get(ctx, "k"); !errors.Is(err, auth.ErrNotFound) {
 			t.Fatalf("Get after 60s = %v, want ErrNotFound", err)
+		}
+
+		// Replace sets a new expiry, and never revives an expired key.
+		if err := s.Set(ctx, "r", []byte("v"), time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(30 * time.Second)
+		if ok, err := s.Replace(ctx, "r", []byte("w"), time.Minute); !ok || err != nil {
+			t.Fatalf("Replace after 30s = %v, %v; want true, nil", ok, err)
+		}
+		time.Sleep(59 * time.Second)
+		if got, err := s.Get(ctx, "r"); err != nil || string(got) != "w" {
+			t.Fatalf("Get 89s after Set = %q, %v; want w", got, err)
+		}
+		time.Sleep(time.Second)
+		if ok, err := s.Replace(ctx, "r", []byte("x"), time.Minute); ok || err != nil {
+			t.Fatalf("Replace of an expired key = %v, %v; want false, nil", ok, err)
+		}
+		if _, err := s.Get(ctx, "r"); !errors.Is(err, auth.ErrNotFound) {
+			t.Fatalf("Get after Replace of an expired key = %v, want ErrNotFound", err)
 		}
 
 		for i, want := range []int64{1, 2, 1} {
@@ -131,5 +171,30 @@ func TestIncrParallel_Atomic(t *testing.T) {
 	}
 	if len(got) != 50 {
 		t.Fatalf("got %d values, want 50", len(got))
+	}
+}
+
+func TestReplaceParallel_NeverRevives(t *testing.T) {
+	ctx := t.Context()
+	s := memstore.New()
+	for i := range 100 {
+		if err := s.Set(ctx, "k", []byte("v"), time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			if _, err := s.Replace(ctx, "k", []byte("w"), time.Minute); err != nil {
+				t.Error(err)
+			}
+		})
+		wg.Go(func() {
+			if err := s.Delete(ctx, "k"); err != nil {
+				t.Error(err)
+			}
+		})
+		wg.Wait()
+		if _, err := s.Get(ctx, "k"); !errors.Is(err, auth.ErrNotFound) {
+			t.Fatalf("run %d: key present after a concurrent Replace and Delete: %v", i, err)
+		}
 	}
 }

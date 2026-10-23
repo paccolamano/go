@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -196,12 +197,12 @@ func TestRenewal_Writes(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if n := rec.Count(storetest.OpSet); n != 0 {
+		if n := rec.Count(storetest.OpReplace); n != 0 {
 			t.Fatalf("%d writes within 7m29s, want 0", n)
 		}
 		time.Sleep(time.Second)
 		_, _ = m.Authenticate(request(t, c))
-		if n := rec.Count(storetest.OpSet); n != 1 {
+		if n := rec.Count(storetest.OpReplace); n != 1 {
 			t.Fatalf("%d writes at 7m30s, want 1", n)
 		}
 
@@ -212,7 +213,7 @@ func TestRenewal_Writes(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if n := rec.Count(storetest.OpSet); n > 4 {
+		if n := rec.Count(storetest.OpReplace); n > 4 {
 			t.Fatalf("%d writes in 30 minutes, want at most 4", n)
 		}
 	})
@@ -221,9 +222,152 @@ func TestRenewal_Writes(t *testing.T) {
 		store := memstore.New()
 		c := issue(t, mustManager(t, store), alice())
 		time.Sleep(8 * time.Minute)
-		failing := mustManager(t, storetest.Failing{Next: store, Err: errStore, Ops: []storetest.Op{storetest.OpSet}})
+		failing := mustManager(t, storetest.Failing{Next: store, Err: errStore, Ops: []storetest.Op{storetest.OpReplace}})
 		if _, err := failing.Authenticate(request(t, c)); !errors.Is(err, errStore) {
 			t.Fatalf("failing renewal: %v", err)
+		}
+		mw, err := auth.New(failing)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec := httptest.NewRecorder()
+		mw(http.NotFoundHandler()).ServeHTTP(rec, request(t, c))
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("failing renewal answered %d, want 500", rec.Code)
+		}
+	})
+}
+
+func TestRenewal_DoesNotRestoreDeleted(t *testing.T) {
+	logout := func(t *testing.T, m *session.Manager, c *http.Cookie) *http.Cookie {
+		t.Helper()
+		if err := m.Revoke(httptest.NewRecorder(), request(t, c)); err != nil {
+			t.Error(err)
+		}
+		return nil
+	}
+	login := func(t *testing.T, m *session.Manager, c *http.Cookie) *http.Cookie {
+		t.Helper()
+		return issue(t, m, alice(), c)
+	}
+	expire := func(t *testing.T, _ *session.Manager, _ *http.Cookie) *http.Cookie {
+		t.Helper()
+		time.Sleep(30 * time.Minute) // past the idle timeout
+		return nil
+	}
+	for _, tt := range []struct {
+		name        string
+		at          point
+		del         func(t *testing.T, m *session.Manager, c *http.Cookie) *http.Cookie
+		wantRenewed bool
+	}{
+		{"logout before read", beforeRead, logout, false},
+		{"logout between read and write", betweenReadAndWrite, logout, false},
+		{"logout after write", afterWrite, logout, true},
+		{"login before read", beforeRead, login, false},
+		{"login between read and write", betweenReadAndWrite, login, false},
+		{"login after write", afterWrite, login, true},
+		{"store expiry between read and write", betweenReadAndWrite, expire, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				store := &interleaved{Store: memstore.New()}
+				m := mustManager(t, store)
+				c := issue(t, m, alice())
+				time.Sleep(8 * time.Minute) // past the 7m30s renewal interval
+				var fresh *http.Cookie
+				store.at = tt.at
+				store.run = func() { fresh = tt.del(t, m, c) }
+
+				p, err := m.Authenticate(request(t, c))
+				switch {
+				case tt.wantRenewed && (err != nil || p.Subject != "user-1"):
+					t.Fatalf("renewing request: %+v, %v; want user-1", p, err)
+				case !tt.wantRenewed && !errors.Is(err, auth.ErrNoCredentials):
+					t.Fatalf("renewing request: %+v, %v; want ErrNoCredentials", p, err)
+				}
+				if store.run != nil {
+					t.Fatal("the deletion did not run")
+				}
+				if _, err := m.Authenticate(request(t, c)); !errors.Is(err, auth.ErrNoCredentials) {
+					t.Fatalf("deleted session afterwards: %v, want ErrNoCredentials", err)
+				}
+				if fresh != nil {
+					if p, err := m.Authenticate(request(t, fresh)); err != nil || p.Subject != "user-1" {
+						t.Fatalf("new session: %+v, %v; want user-1", p, err)
+					}
+				}
+			})
+		})
+	}
+}
+
+func TestRenewal_DeletedServedAsAnonymous(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		store := &interleaved{Store: memstore.New()}
+		m := mustManager(t, store)
+		c := issue(t, m, alice())
+		time.Sleep(8 * time.Minute)
+		store.at = betweenReadAndWrite
+		store.run = func() {
+			if err := m.Revoke(httptest.NewRecorder(), request(t, c)); err != nil {
+				t.Error(err)
+			}
+		}
+		mw, err := auth.New(m, auth.WithAnonymous())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var served, hasPrincipal bool
+		h := mw(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			served = true
+			_, hasPrincipal = auth.FromContext(r.Context())
+		}))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, request(t, c))
+		if rec.Code != http.StatusOK || !served || hasPrincipal {
+			t.Fatalf("status %d, served %v, principal %v; want 200, served with no principal", rec.Code, served, hasPrincipal)
+		}
+	})
+}
+
+func TestRenewal_ConcurrentLogout(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		m := mustManager(t, memstore.New())
+		c := issue(t, m, alice())
+
+		// Concurrent renewals with no logout: every request is authenticated.
+		time.Sleep(8 * time.Minute)
+		var wg sync.WaitGroup
+		for range 100 {
+			wg.Go(func() {
+				if _, err := m.Authenticate(request(t, c)); err != nil {
+					t.Error(err)
+				}
+			})
+		}
+		wg.Wait()
+		if _, err := m.Authenticate(request(t, c)); err != nil {
+			t.Fatalf("session after concurrent renewals: %v", err)
+		}
+
+		// Concurrent renewals and a logout: the session ends.
+		time.Sleep(8 * time.Minute)
+		for range 100 {
+			wg.Go(func() {
+				if _, err := m.Authenticate(request(t, c)); err != nil && !errors.Is(err, auth.ErrNoCredentials) {
+					t.Error(err)
+				}
+			})
+		}
+		wg.Go(func() {
+			if err := m.Revoke(httptest.NewRecorder(), request(t, c)); err != nil {
+				t.Error(err)
+			}
+		})
+		wg.Wait()
+		if _, err := m.Authenticate(request(t, c)); !errors.Is(err, auth.ErrNoCredentials) {
+			t.Fatalf("session after a concurrent logout: %v, want ErrNoCredentials", err)
 		}
 	})
 }

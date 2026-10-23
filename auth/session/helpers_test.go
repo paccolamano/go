@@ -1,11 +1,14 @@
 package session_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/paccolamano/go/auth"
+	"github.com/paccolamano/go/auth/memstore"
 	"github.com/paccolamano/go/auth/session"
 )
 
@@ -68,4 +71,59 @@ func requestCookie(tb testing.TB, name, value string) *http.Cookie {
 		tb.Fatalf("ParseCookie: %v", err)
 	}
 	return cs[0]
+}
+
+// point is where interleaved runs its function within a renewal.
+type point int
+
+const (
+	beforeRead point = iota
+	betweenReadAndWrite
+	afterWrite
+)
+
+// interleaved simulates a concurrent request whose store calls land at a
+// chosen point of a renewal: it runs run once, at the point named by at:
+// before the Get, between the Get and the write, or after the write.
+type interleaved struct {
+	*memstore.Store
+	at  point
+	run func()
+}
+
+// fire calls run once. Store calls made by run itself do not fire again.
+func (s *interleaved) fire() {
+	if f := s.run; f != nil {
+		s.run = nil
+		f()
+	}
+}
+
+func (s *interleaved) Get(ctx context.Context, key string) ([]byte, error) {
+	if s.at == beforeRead {
+		s.fire()
+	}
+	return s.Store.Get(ctx, key)
+}
+
+func (s *interleaved) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	if s.at == betweenReadAndWrite {
+		s.fire()
+	}
+	err := s.Store.Set(ctx, key, value, ttl)
+	if s.at == afterWrite {
+		s.fire()
+	}
+	return err
+}
+
+func (s *interleaved) Replace(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
+	if s.at == betweenReadAndWrite {
+		s.fire()
+	}
+	ok, err := s.Store.Replace(ctx, key, value, ttl)
+	if s.at == afterWrite {
+		s.fire()
+	}
+	return ok, err
 }

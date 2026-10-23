@@ -16,13 +16,14 @@ type Op string
 
 // The Store operations.
 const (
-	OpGet    Op = "get"
-	OpSet    Op = "set"
-	OpDelete Op = "delete"
-	OpIncr   Op = "incr"
+	OpGet     Op = "get"
+	OpSet     Op = "set"
+	OpReplace Op = "replace"
+	OpDelete  Op = "delete"
+	OpIncr    Op = "incr"
 )
 
-// Call is one recorded Store call. Value is set only for OpSet.
+// Call is one recorded Store call. Value is set only for OpSet and OpReplace.
 type Call struct {
 	Op    Op
 	Key   string
@@ -90,6 +91,16 @@ func (r *Recorder) Set(ctx context.Context, key string, value []byte, ttl time.D
 	return nil
 }
 
+// Replace records and forwards the call.
+func (r *Recorder) Replace(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
+	r.record(Call{Op: OpReplace, Key: key, Value: slices.Clone(value)})
+	ok, err := r.Next.Replace(ctx, key, value, ttl)
+	if err != nil {
+		return false, fmt.Errorf("storetest: %w", err)
+	}
+	return ok, nil
+}
+
 // Delete records and forwards the call.
 func (r *Recorder) Delete(ctx context.Context, key string) error {
 	r.record(Call{Op: OpDelete, Key: key})
@@ -140,6 +151,18 @@ func (f Failing) Set(ctx context.Context, key string, value []byte, ttl time.Dur
 		return fmt.Errorf("storetest: %w", err)
 	}
 	return nil
+}
+
+// Replace fails or forwards the call.
+func (f Failing) Replace(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
+	if f.fails(OpReplace) {
+		return false, f.Err
+	}
+	ok, err := f.Next.Replace(ctx, key, value, ttl)
+	if err != nil {
+		return false, fmt.Errorf("storetest: %w", err)
+	}
+	return ok, nil
 }
 
 // Delete fails or forwards the call.
