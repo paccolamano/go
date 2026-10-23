@@ -281,65 +281,77 @@ func TestInfrastructureFailures(t *testing.T) {
 	})
 }
 
+// runEveryFlow runs every flow that touches the store, a session renewal
+// included, against rs, and returns the secrets that must appear in no store
+// value and the strings that must appear in no store key.
+func runEveryFlow(t *testing.T, rs *storetest.Recorder) (secrets, inKeys []string) {
+	t.Helper()
+	a := newApp(t, rs)
+	ctx := t.Context()
+	var cookies, codes []string
+	collect := func(rec *httptest.ResponseRecorder) {
+		for _, c := range rec.Result().Cookies() {
+			if c.Value != "" {
+				cookies = append(cookies, c.Value)
+			}
+		}
+	}
+
+	// Attempt limit on the same store.
+	limited, _ := password.NewChecker(func(context.Context, string) (password.Account, error) {
+		return password.Account{}, password.ErrNotFound
+	},
+		password.WithParams(password.Params{Memory: 7168, Iterations: 5, Parallelism: 1}),
+		password.WithAttemptLimit(password.AttemptLimit{Store: rs}))
+	_, _ = limited.Check(ctx, "alice", "wrong guess")
+
+	// Enrollment.
+	e, _ := totp.NewEnrollment("Acme", "alice")
+	enrollCode := hotp.Value(hotp.SHA1, e.Secret(), uint64(time.Now().Unix()/30), 6)
+	codes = append(codes, enrollCode)
+	_ = a.otp.Confirm(ctx, "user-2", e.Secret(), enrollCode) // another user enrolls
+
+	// Password, pending login, TOTP, session, renewal, revocation.
+	p, _ := a.checker.Check(ctx, "alice", "correct horse")
+	login := httptest.NewRecorder()
+	_ = a.sessions.IssuePending(login, httptest.NewRequestWithContext(ctx, http.MethodPost, "/login", nil), p)
+	collect(login)
+	r := withCookies(t, login)
+	pending, _ := a.sessions.Pending(r)
+	code := currentCode(0)
+	codes = append(codes, code)
+	p, _ = a.otp.Verify(ctx, pending, code)
+	done := httptest.NewRecorder()
+	_ = a.sessions.Issue(done, r, p)
+	collect(done)
+	time.Sleep(8 * time.Minute) // past the renewal interval
+	if _, err := a.sessions.Authenticate(withCookies(t, done)); err != nil {
+		t.Fatalf("renewal: %v", err)
+	}
+	_ = a.sessions.Revoke(httptest.NewRecorder(), withCookies(t, done))
+
+	// Recovery code.
+	login = httptest.NewRecorder()
+	_ = a.sessions.IssuePending(login, httptest.NewRequestWithContext(ctx, http.MethodPost, "/login", nil), &auth.Principal{Subject: "user-1", Methods: []string{"pwd"}})
+	collect(login)
+	pending, _ = a.sessions.Pending(withCookies(t, login))
+	_, _ = a.recovery.Verify(ctx, pending, a.codes.Plain()[0])
+	codes = append(codes, a.codes.Plain()[0], strings.ReplaceAll(a.codes.Plain()[0], "-", ""))
+
+	secrets = []string{"correct horse", "wrong guess", string(totpSecret), string(e.Secret())}
+	secrets = append(append(secrets, cookies...), codes...)
+	inKeys = append(slices.Clone(secrets), "alice", "user-1")
+	if calls := rs.Calls(); len(calls) == 0 || len(cookies) < 3 {
+		t.Fatalf("flows did not run: %d calls, %d cookies", len(calls), len(cookies))
+	}
+	return secrets, inKeys
+}
+
 func TestStoreHoldsNoSecrets(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		rs := &storetest.Recorder{Next: memstore.New()}
-		a := newApp(t, rs)
-		ctx := t.Context()
-		var cookies, codes []string
-		collect := func(rec *httptest.ResponseRecorder) {
-			for _, c := range rec.Result().Cookies() {
-				if c.Value != "" {
-					cookies = append(cookies, c.Value)
-				}
-			}
-		}
-
-		// Attempt limit on the same store.
-		limited, _ := password.NewChecker(func(context.Context, string) (password.Account, error) {
-			return password.Account{}, password.ErrNotFound
-		},
-			password.WithParams(password.Params{Memory: 7168, Iterations: 5, Parallelism: 1}),
-			password.WithAttemptLimit(password.AttemptLimit{Store: rs}))
-		_, _ = limited.Check(ctx, "alice", "wrong guess")
-
-		// Enrollment.
-		e, _ := totp.NewEnrollment("Acme", "alice")
-		enrollCode := hotp.Value(hotp.SHA1, e.Secret(), uint64(time.Now().Unix()/30), 6)
-		codes = append(codes, enrollCode)
-		_ = a.otp.Confirm(ctx, "user-2", e.Secret(), enrollCode) // another user enrolls
-
-		// Password, pending login, TOTP, session, revocation.
-		p, _ := a.checker.Check(ctx, "alice", "correct horse")
-		login := httptest.NewRecorder()
-		_ = a.sessions.IssuePending(login, httptest.NewRequestWithContext(ctx, http.MethodPost, "/login", nil), p)
-		collect(login)
-		r := withCookies(t, login)
-		pending, _ := a.sessions.Pending(r)
-		code := currentCode(0)
-		codes = append(codes, code)
-		p, _ = a.otp.Verify(ctx, pending, code)
-		done := httptest.NewRecorder()
-		_ = a.sessions.Issue(done, r, p)
-		collect(done)
-		_ = a.sessions.Revoke(httptest.NewRecorder(), withCookies(t, done))
-
-		// Recovery code.
-		login = httptest.NewRecorder()
-		_ = a.sessions.IssuePending(login, httptest.NewRequestWithContext(ctx, http.MethodPost, "/login", nil), &auth.Principal{Subject: "user-1", Methods: []string{"pwd"}})
-		collect(login)
-		pending, _ = a.sessions.Pending(withCookies(t, login))
-		_, _ = a.recovery.Verify(ctx, pending, a.codes.Plain()[0])
-		codes = append(codes, a.codes.Plain()[0], strings.ReplaceAll(a.codes.Plain()[0], "-", ""))
-
-		secrets := []string{"correct horse", "wrong guess", string(totpSecret), string(e.Secret())}
-		secrets = append(append(secrets, cookies...), codes...)
-		inKeys := append(slices.Clone(secrets), "alice", "user-1")
-		calls := rs.Calls()
-		if len(calls) == 0 || len(cookies) < 3 {
-			t.Fatalf("flows did not run: %d calls, %d cookies", len(calls), len(cookies))
-		}
-		for _, call := range calls {
+		secrets, inKeys := runEveryFlow(t, rs)
+		for _, call := range rs.Calls() {
 			for _, s := range inKeys {
 				for _, enc := range encodings(s) {
 					if strings.Contains(call.Key, enc) {
@@ -354,6 +366,23 @@ func TestStoreHoldsNoSecrets(t *testing.T) {
 					}
 				}
 			}
+		}
+	})
+}
+
+func TestStoreSetCreatesOnly(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		rs := &storetest.Recorder{Next: memstore.New()}
+		runEveryFlow(t, rs)
+		seen := map[string]bool{}
+		for _, call := range rs.Calls() {
+			if call.Op == storetest.OpSet && seen[call.Key] {
+				t.Errorf("Set over the key %q, which an earlier call used", call.Key)
+			}
+			seen[call.Key] = true
+		}
+		if rs.Count(storetest.OpReplace) == 0 {
+			t.Error("no renewal ran")
 		}
 	})
 }

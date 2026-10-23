@@ -80,6 +80,32 @@ func (s *Store) Set(ctx context.Context, key string, value []byte, ttl time.Dura
 	return nil
 }
 
+// Replace stores a copy of value under key for ttl when key is present and
+// unexpired, and reports whether it did. It never creates a key, and an
+// expired key stays absent.
+func (s *Store) Replace(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, fmt.Errorf("memstore: replace: %w", err)
+	}
+	if ttl <= 0 {
+		return false, errBadTTL
+	}
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.m[key]
+	if !ok {
+		return false, nil
+	}
+	if !now.Before(e.expires) {
+		delete(s.m, key)
+		return false, nil
+	}
+	s.m[key] = entry{value: append([]byte(nil), value...), expires: now.Add(ttl)}
+	s.sweep(now)
+	return true, nil
+}
+
 // Delete removes key. Deleting an absent key is not an error.
 func (s *Store) Delete(ctx context.Context, key string) error {
 	if err := ctx.Err(); err != nil {

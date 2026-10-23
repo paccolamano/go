@@ -16,12 +16,22 @@ func ExampleNew() {
 	v, _ := s.Get(ctx, "greeting")
 	fmt.Println(string(v))
 
+	ok, _ := s.Replace(ctx, "greeting", []byte("hi"), time.Minute)
+	fmt.Println(ok)
+	ok, _ = s.Replace(ctx, "missing", []byte("x"), time.Minute)
+	fmt.Println(ok)
+	v, _ = s.Get(ctx, "greeting")
+	fmt.Println(string(v))
+
 	for range 3 {
 		n, _ := s.Incr(ctx, "attempts", time.Minute)
 		fmt.Println(n)
 	}
 	// Output:
 	// hello
+	// true
+	// false
+	// hi
 	// 1
 	// 2
 	// 3

@@ -7,6 +7,20 @@ and this module adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking**: `auth.Store` gains `Replace`, which stores a value only over a key that exists,
+  checking and writing in one atomic step, and reports whether it stored it. Store adapters
+  must implement it; with Redis it is one command, `SET` with `XX`, shown in the README.
+  `memstore` implements it.
+
+### Fixed
+
+- `session`: a session deleted by `Revoke`, or by `Issue` at a new login, while a request was
+  renewing it was written back to the store and accepted again, for example from a stolen
+  cookie after the user logged out. Renewal now uses `Store.Replace`, and the request that was
+  renewing the deleted session gets `auth.ErrNoCredentials`.
+
 ## [0.1.0] - 2026-10-20
 
 ### Added

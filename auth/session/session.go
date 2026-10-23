@@ -117,7 +117,8 @@ func New(store auth.Store, opts ...Option) (*Manager, error) {
 
 // Authenticate authenticates r with its session cookie, reading only the
 // store. A missing cookie, or one whose session is malformed, unknown, expired
-// or revoked, returns auth.ErrNoCredentials. A store failure returns an error.
+// or revoked, returns auth.ErrNoCredentials, also when the session is deleted
+// while this request renews it. A store failure returns an error.
 func (m *Manager) Authenticate(r *http.Request) (*auth.Principal, error) {
 	id, ok := readID(r, m.cookie)
 	if !ok {
@@ -144,31 +145,33 @@ func (m *Manager) Authenticate(r *http.Request) (*auth.Principal, error) {
 	}
 	if now.Sub(lastWrite) >= m.idle/4 {
 		rec.RW = now.Unix()
-		if err := m.write(r, key, rec, now); err != nil {
+		b, err := encodeRecord(rec)
+		if err != nil {
+			return nil, err
+		}
+		// Replace, never Set: a session deleted since the Get, by a logout or
+		// a new login, must stay deleted.
+		ok, err := m.store.Replace(ctx, key, b, m.ttl(rec, now))
+		switch {
+		case err != nil:
 			return nil, fmt.Errorf("session: renew: %w", err)
+		case !ok:
+			return nil, auth.ErrNoCredentials
 		}
 	}
 	return &auth.Principal{Subject: rec.Sub, Methods: rec.AMR}, nil
 }
 
-// write stores a session record with the TTL min(rw + idle, exp) − now.
-func (m *Manager) write(r *http.Request, key string, rec sessionRecord, now time.Time) error {
-	b, err := encodeRecord(rec)
-	if err != nil {
-		return err
-	}
+// ttl returns the store TTL of a session record: min(rw + idle, exp) − now.
+func (m *Manager) ttl(rec sessionRecord, now time.Time) time.Duration {
 	end := time.Unix(rec.RW, 0).Add(m.idle)
 	if exp := time.Unix(rec.EXP, 0); exp.Before(end) {
 		end = exp
 	}
-	ttl := end.Sub(now)
-	if ttl <= 0 {
-		ttl = time.Second
+	if d := end.Sub(now); d > 0 {
+		return d
 	}
-	if err := m.store.Set(r.Context(), key, b, ttl); err != nil {
-		return fmt.Errorf("session: write: %w", err)
-	}
-	return nil
+	return time.Second
 }
 
 // Challenge returns the session's challenge, Cookie cookie-name="<name>", for

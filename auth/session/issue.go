@@ -32,7 +32,11 @@ func (m *Manager) Issue(w http.ResponseWriter, r *http.Request, p *auth.Principa
 		EXP: now.Add(m.lifetime).Unix(),
 		RW:  now.Unix(),
 	}
-	if err := m.write(r, storekey.Key("session", id), rec, now); err != nil {
+	b, err := encodeRecord(rec)
+	if err != nil {
+		return err
+	}
+	if err := m.store.Set(r.Context(), storekey.Key("session", id), b, m.ttl(rec, now)); err != nil {
 		return fmt.Errorf("session: issue: %w", err)
 	}
 	setCookie(w, m.cookie, id, m.lifetime)
