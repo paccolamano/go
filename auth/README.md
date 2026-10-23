@@ -18,6 +18,8 @@ It handles the parts that are easy to get wrong:
   passwords over 72 bytes never match them;
 - session identifiers change at every login, travel in a `__Host-` cookie and are stored only
   as hashes;
+- every session of a user can be revoked at once, on every instance, for example after a password
+  change;
 - one-time codes have an attempt limit and cannot be replayed, even in parallel;
 - a token's `alg` never chooses its key, `none` is rejected, and `exp` is required;
 - API keys are stored as hashes, so a database backup cannot be used to call the service.
@@ -138,6 +140,12 @@ deleted; `SetXX` reports `false`, with no error, when the key is absent. Every o
 key, so the adapter works with Redis Cluster. Keys start with `auth:`; prefix them in the adapter
 if several applications share one database.
 
+The store must keep every key until it expires, and a read must see every write that completed
+before it. A revocation that the store evicts early stops revoking, and evictions also reset
+attempt limits: keep Redis on its default `maxmemory-policy`, `noeviction`, since the `volatile-*`
+policies can evict any key of this module. Read from the primary, not from replicas, so that a
+session issued right after a revocation sees it.
+
 ## Passwords
 
 `password.Hash` and `Checker.Hash` produce argon2id hashes in PHC format with the OWASP defaults:
@@ -159,7 +167,8 @@ limits from `middleware/ratelimit`.
 
 Cookies are `__Host-session` and `__Host-session-pending`, with `Secure`, `HttpOnly` and
 `SameSite=Lax`. Sessions expire after 8 hours, or after 30 idle minutes; activity renews them at
-most once every 7.5 minutes, so most requests cost one store read and no write.
+most once every 7.5 minutes, so most requests cost two store reads, the session and its user's
+revocation state, and no write.
 
 Cookie sessions need protection against cross-site request forgery. Wrap the routes that change
 state with the standard library:
@@ -171,6 +180,33 @@ handler := csrf.Handler(mux)
 
 Browsers accept `Secure` and `__Host-` cookies on `http://localhost`, so local development works
 without TLS.
+
+## Revoking every session of a user
+
+`sessions.RevokeSubject(ctx, subject)` ends every session and pending login of a user, on every
+instance: call it after a password change, when an account is disabled, or to log out of every
+device. It needs no request, so an administrative action or a background job can call it too. To
+keep the current browser signed in, issue a new session right after:
+
+```go
+mux.Handle("POST /password", authn(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	p, _ := auth.FromContext(r.Context())
+	// Check the current password and store the new hash here.
+	if err := sessions.RevokeSubject(r.Context(), p.Subject); err != nil {
+		http.Error(w, "try again", http.StatusInternalServerError)
+		return
+	}
+	_ = sessions.Issue(w, r, p) // a new identifier, issued after the revocation
+})))
+```
+
+Every request checks the user's revocation state, one more store read. A login whose password was
+checked before a revocation, and whose session is issued after it, is not revoked: call `Issue`
+right after checking the password. A revocation is kept for the session lifetime plus one hour,
+then expires; sessions issued after it keep working.
+
+Sessions issued by 0.2.0 stay valid until their user is revoked. During a rolling upgrade from
+0.2.0, or after a rollback to it, instances running 0.2.0 do not check revocations.
 
 ## Second factor
 

@@ -19,7 +19,8 @@ const maxAttempts = 5
 // IssuePending starts a pending login for p, a principal that passed its first
 // factor and must pass a second one. The pending login has its own cookie,
 // lives for the pending lifetime and never authenticates a request. It
-// replaces any pending login the request carried.
+// replaces any pending login the request carried, and, like Issue, records
+// the revocation state of p.Subject.
 func (m *Manager) IssuePending(w http.ResponseWriter, r *http.Request, p *auth.Principal) error {
 	if p == nil || p.Subject == "" {
 		return errors.New("session: issue pending: the principal has no subject")
@@ -30,8 +31,12 @@ func (m *Manager) IssuePending(w http.ResponseWriter, r *http.Request, p *auth.P
 			return fmt.Errorf("session: issue pending: %w", err)
 		}
 	}
+	gen, err := m.generation(ctx, p.Subject)
+	if err != nil {
+		return fmt.Errorf("session: issue pending: %w", err)
+	}
 	id := newID()
-	b, err := encodeRecord(pendingRecord{V: recordVersion, Sub: p.Subject, AMR: slices.Clone(p.Methods), IAT: time.Now().Unix()})
+	b, err := encodeRecord(pendingRecord{V: recordVersion, Sub: p.Subject, AMR: slices.Clone(p.Methods), IAT: time.Now().Unix(), Gen: gen})
 	if err != nil {
 		return err
 	}
@@ -43,7 +48,8 @@ func (m *Manager) IssuePending(w http.ResponseWriter, r *http.Request, p *auth.P
 }
 
 // Pending returns the pending login of r. It returns auth.ErrNoCredentials
-// when the request carries none, or when it expired or was cancelled.
+// when the request carries none, or when it expired, was cancelled, or its
+// subject was revoked after it was issued. A store failure returns an error.
 func (m *Manager) Pending(r *http.Request) (auth.Pending, error) {
 	id, ok := readID(r, m.pendingCookie)
 	if !ok {
@@ -61,6 +67,12 @@ func (m *Manager) Pending(r *http.Request) (auth.Pending, error) {
 		return nil, err
 	}
 	if !time.Now().Before(time.Unix(rec.IAT, 0).Add(m.pendingLifetime)) {
+		return nil, auth.ErrNoCredentials
+	}
+	switch revoked, err := m.revoked(r.Context(), rec.Sub, rec.Gen); {
+	case err != nil:
+		return nil, fmt.Errorf("session: %w", err)
+	case revoked:
 		return nil, auth.ErrNoCredentials
 	}
 	return &pending{m: m, id: id, p: &auth.Principal{Subject: rec.Sub, Methods: rec.AMR}}, nil

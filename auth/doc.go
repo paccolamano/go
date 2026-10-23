@@ -56,13 +56,14 @@
 //
 // # Store
 //
-// The Store holds sessions, pending logins and counters, for example in
-// Redis. The library chooses every key, derives the keys of secrets from
-// their SHA-256 hash, and never writes a secret in clear. Store.Incr must be
-// atomic and must set the expiry only when it creates the counter.
+// The Store holds sessions, pending logins, revocations and counters, for
+// example in Redis. The library chooses every key, derives the keys of secrets
+// from their SHA-256 hash, and never writes a secret in clear. Store.Incr must
+// be atomic and must set the expiry only when it creates the counter.
 // Store.Replace must write only over a key that exists, checking and writing
 // in one atomic step, so that renewing a session never restores one that a
-// logout deleted in the meantime.
+// logout deleted in the meantime. The Store must keep every key until it
+// expires: a revocation evicted early stops revoking.
 //
 // # Context
 //

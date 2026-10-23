@@ -6,8 +6,8 @@ import (
 )
 
 // Store is a key-value store with expiry that holds the library's short-lived
-// state: sessions, pending logins and counters. The library chooses every key
-// and never stores a secret in clear.
+// state: sessions, pending logins, revocations and counters. The library
+// chooses every key and never stores a secret in clear.
 //
 // Implementations must guarantee:
 //   - Get returns an error matching ErrNotFound when the key is absent or its

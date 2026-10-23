@@ -11,7 +11,8 @@ const recordVersion = 1
 
 var errRecordVersion = errors.New("session: unknown record format version")
 
-// sessionRecord is the store value of a session. Times are Unix seconds.
+// sessionRecord is the store value of a session. Times are Unix seconds. Gen
+// is the revocation state of the subject when the session was issued.
 type sessionRecord struct {
 	V   int      `json:"v"`
 	Sub string   `json:"sub"`
@@ -19,14 +20,17 @@ type sessionRecord struct {
 	IAT int64    `json:"iat"`
 	EXP int64    `json:"exp"`
 	RW  int64    `json:"rw"`
+	Gen string   `json:"gen,omitempty"`
 }
 
-// pendingRecord is the store value of a pending login.
+// pendingRecord is the store value of a pending login. Gen is as in
+// sessionRecord.
 type pendingRecord struct {
 	V   int      `json:"v"`
 	Sub string   `json:"sub"`
 	AMR []string `json:"amr"`
 	IAT int64    `json:"iat"`
+	Gen string   `json:"gen,omitempty"`
 }
 
 func encodeRecord(v any) ([]byte, error) {
