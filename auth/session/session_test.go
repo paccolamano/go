@@ -94,8 +94,8 @@ func TestAuthenticate_Principal(t *testing.T) {
 	if err != nil || p.Subject != "user-1" || !slices.Equal(p.Methods, []string{"pwd", "otp", "mfa"}) {
 		t.Fatalf("Authenticate = %+v, %v", p, err)
 	}
-	if n := rec.Count(storetest.OpGet); n != 1 || len(rec.Calls()) != 1 {
-		t.Fatalf("store calls = %v, want exactly one Get", rec.Calls())
+	if n := rec.Count(storetest.OpGet); n != 2 || len(rec.Calls()) != 2 {
+		t.Fatalf("store calls = %v, want exactly two Gets: the session and its subject's revocation state", rec.Calls())
 	}
 }
 

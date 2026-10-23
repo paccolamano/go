@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,11 +81,16 @@ const (
 	beforeRead point = iota
 	betweenReadAndWrite
 	afterWrite
+	beforeRevocationRead
 )
+
+// revocationPrefix starts the store key of a subject's revocation state.
+const revocationPrefix = "auth:session-gen:"
 
 // interleaved simulates a concurrent request whose store calls land at a
 // chosen point of a renewal: it runs run once, at the point named by at:
-// before the Get, between the Get and the write, or after the write.
+// before the Get, between the Get and the write, after the write, or before
+// the read of a revocation state.
 type interleaved struct {
 	*memstore.Store
 	at  point
@@ -100,7 +106,7 @@ func (s *interleaved) fire() {
 }
 
 func (s *interleaved) Get(ctx context.Context, key string) ([]byte, error) {
-	if s.at == beforeRead {
+	if s.at == beforeRead || s.at == beforeRevocationRead && strings.HasPrefix(key, revocationPrefix) {
 		s.fire()
 	}
 	return s.Store.Get(ctx, key)
@@ -126,4 +132,22 @@ func (s *interleaved) Replace(ctx context.Context, key string, value []byte, ttl
 		s.fire()
 	}
 	return ok, err
+}
+
+// failingRevocation fails the reads and writes of revocation states with
+// errStore, and forwards every other call.
+type failingRevocation struct{ auth.Store }
+
+func (s failingRevocation) Get(ctx context.Context, key string) ([]byte, error) {
+	if strings.HasPrefix(key, revocationPrefix) {
+		return nil, errStore
+	}
+	return s.Store.Get(ctx, key)
+}
+
+func (s failingRevocation) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	if strings.HasPrefix(key, revocationPrefix) {
+		return errStore
+	}
+	return s.Store.Set(ctx, key, value, ttl)
 }

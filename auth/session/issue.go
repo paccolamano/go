@@ -13,14 +13,19 @@ import (
 
 // Issue starts a session for p. It deletes the session and the pending login
 // the request carried, writes a new session under a new identifier, sets the
-// session cookie and clears the pending cookie. On a store failure it returns
-// an error and sets no cookie.
+// session cookie and clears the pending cookie. The session records the
+// revocation state of p.Subject: a RevokeSubject that runs while Issue writes
+// it revokes it. On a store failure it returns an error and sets no cookie.
 func (m *Manager) Issue(w http.ResponseWriter, r *http.Request, p *auth.Principal) error {
 	if p == nil || p.Subject == "" {
 		return errors.New("session: issue: the principal has no subject")
 	}
 	if err := m.deleteCarried(r); err != nil {
 		return err
+	}
+	gen, err := m.generation(r.Context(), p.Subject)
+	if err != nil {
+		return fmt.Errorf("session: issue: %w", err)
 	}
 	id := newID()
 	now := time.Now()
@@ -31,6 +36,7 @@ func (m *Manager) Issue(w http.ResponseWriter, r *http.Request, p *auth.Principa
 		IAT: now.Unix(),
 		EXP: now.Add(m.lifetime).Unix(),
 		RW:  now.Unix(),
+		Gen: gen,
 	}
 	b, err := encodeRecord(rec)
 	if err != nil {

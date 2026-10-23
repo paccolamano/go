@@ -75,3 +75,33 @@ func ExampleManager_Pending() {
 	// user-42 <nil>
 	// auth: no credentials
 }
+
+func ExampleManager_RevokeSubject() {
+	sessions, _ := session.New(memstore.New())
+	ctx := context.Background()
+	signIn := func() *http.Request {
+		login := httptest.NewRecorder()
+		_ = sessions.Issue(login, httptest.NewRequestWithContext(ctx, http.MethodPost, "/login", nil),
+			&auth.Principal{Subject: "user-42", Methods: []string{"pwd"}})
+		r := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
+		r.AddCookie(login.Result().Cookies()[0])
+		return r
+	}
+	laptop, phone := signIn(), signIn()
+
+	// POST /password on the laptop, after the new hash was stored.
+	p, _ := sessions.Authenticate(laptop)
+	_ = sessions.RevokeSubject(ctx, p.Subject)
+	done := httptest.NewRecorder()
+	_ = sessions.Issue(done, laptop, p) // keeps the laptop signed in
+
+	_, err := sessions.Authenticate(phone)
+	fmt.Println(err)
+	r := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
+	r.AddCookie(done.Result().Cookies()[0])
+	got, err := sessions.Authenticate(r)
+	fmt.Println(got.Subject, err)
+	// Output:
+	// auth: no credentials
+	// user-42 <nil>
+}

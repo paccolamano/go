@@ -330,6 +330,12 @@ func runEveryFlow(t *testing.T, rs *storetest.Recorder) (secrets, inKeys []strin
 	}
 	_ = a.sessions.Revoke(httptest.NewRecorder(), withCookies(t, done))
 
+	// Revocation of every session of the subject, then a new session.
+	_ = a.sessions.RevokeSubject(ctx, "user-1")
+	again := httptest.NewRecorder()
+	_ = a.sessions.Issue(again, httptest.NewRequestWithContext(ctx, http.MethodPost, "/password", nil), p)
+	collect(again)
+
 	// Recovery code.
 	login = httptest.NewRecorder()
 	_ = a.sessions.IssuePending(login, httptest.NewRequestWithContext(ctx, http.MethodPost, "/login", nil), &auth.Principal{Subject: "user-1", Methods: []string{"pwd"}})
@@ -375,7 +381,14 @@ func TestStoreSetCreatesOnly(t *testing.T) {
 		rs := &storetest.Recorder{Next: memstore.New()}
 		runEveryFlow(t, rs)
 		seen := map[string]bool{}
+		revocations := 0
 		for _, call := range rs.Calls() {
+			// A revocation overwrites the subject's revocation state on
+			// purpose: it writes a new value without reading the old one.
+			if call.Op == storetest.OpSet && strings.HasPrefix(call.Key, "auth:session-gen:") {
+				revocations++
+				continue
+			}
 			if call.Op == storetest.OpSet && seen[call.Key] {
 				t.Errorf("Set over the key %q, which an earlier call used", call.Key)
 			}
@@ -383,6 +396,9 @@ func TestStoreSetCreatesOnly(t *testing.T) {
 		}
 		if rs.Count(storetest.OpReplace) == 0 {
 			t.Error("no renewal ran")
+		}
+		if revocations == 0 {
+			t.Error("no revocation ran")
 		}
 	})
 }

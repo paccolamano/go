@@ -4,9 +4,11 @@
 // Session identifiers have 256 bits from crypto/rand; the store holds only
 // their SHA-256 hash. A session expires after an absolute lifetime and after an
 // idle timeout; activity renews it at most once every quarter of the idle
-// timeout, so most requests cost one store read and no write. Issue always
-// creates a new identifier and deletes the session and pending login the
-// request carried, which prevents session fixation.
+// timeout, so most requests cost two store reads, the session and the
+// revocation state of its subject, and no write. Issue always creates a new
+// identifier and deletes the session and pending login the request carried,
+// which prevents session fixation. RevokeSubject ends every session and
+// pending login of a subject, for example after a password change.
 //
 // Cookie sessions need protection against cross-site request forgery: wrap the
 // routes that change state with http.CrossOriginProtection.
@@ -81,6 +83,7 @@ type Manager struct {
 	lifetime        time.Duration
 	idle            time.Duration
 	pendingLifetime time.Duration
+	revocationTTL   time.Duration
 }
 
 // New returns a Manager that keeps sessions in store.
@@ -112,13 +115,16 @@ func New(store auth.Store, opts ...Option) (*Manager, error) {
 		lifetime:        cfg.lifetime,
 		idle:            cfg.idle,
 		pendingLifetime: cfg.pendingLifetime,
+		revocationTTL:   max(cfg.lifetime, cfg.pendingLifetime) + revocationMargin,
 	}, nil
 }
 
 // Authenticate authenticates r with its session cookie, reading only the
-// store. A missing cookie, or one whose session is malformed, unknown, expired
-// or revoked, returns auth.ErrNoCredentials, also when the session is deleted
-// while this request renews it. A store failure returns an error.
+// store: the session, and the revocation state of its subject. A missing
+// cookie, or one whose session is malformed, unknown, expired or revoked, by
+// Revoke, Issue or RevokeSubject, returns auth.ErrNoCredentials, also when the
+// session is deleted while this request renews it. A store failure returns an
+// error.
 func (m *Manager) Authenticate(r *http.Request) (*auth.Principal, error) {
 	id, ok := readID(r, m.cookie)
 	if !ok {
@@ -141,6 +147,12 @@ func (m *Manager) Authenticate(r *http.Request) (*auth.Principal, error) {
 	exp := time.Unix(rec.EXP, 0)
 	lastWrite := time.Unix(rec.RW, 0)
 	if !now.Before(exp) || !now.Before(lastWrite.Add(m.idle)) {
+		return nil, auth.ErrNoCredentials
+	}
+	switch revoked, err := m.revoked(ctx, rec.Sub, rec.Gen); {
+	case err != nil:
+		return nil, fmt.Errorf("session: %w", err)
+	case revoked:
 		return nil, auth.ErrNoCredentials
 	}
 	if now.Sub(lastWrite) >= m.idle/4 {

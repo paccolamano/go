@@ -7,6 +7,16 @@ and this module adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- `session`: `Manager.RevokeSubject` revokes every session and pending login of a subject, on
+  every instance, for example after a password change, when an account is disabled, or to log
+  out of every device. A request authenticated with a session now reads the store twice: the
+  session, and its subject's revocation state. Issuing a session or a pending login, and
+  reading a pending login, also read the store once more. Sessions issued by 0.2.0 stay valid
+  until their subject is revoked. 0.2.0 reads the sessions that this version writes, but does
+  not check revocations.
+
 ## [0.2.0] - 2026-10-23
 
 ### Changed
