@@ -7,6 +7,8 @@ and this module adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-10
+
 ### Fixed
 
 - `Type.Match` matches a problem read with `Read` when the type is declared with a relative URI,
