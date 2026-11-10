@@ -7,6 +7,13 @@ and this module adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Security
+
+- `jwt`: `github.com/go-jose/go-jose/v4` is raised from v4.1.5 to v4.1.6, which fixes
+  CVE-2026-116587, a denial of service through crafted RSA parameters in a JWK. A
+  `jwt.Verifier` reaches JWK decoding in two ways: it decodes the key set of `WithJWKS`, and
+  go-jose decodes the `jwk` header of every token it parses, before the signature is verified.
+
 ## [0.3.0] - 2026-10-23
 
 ### Added
