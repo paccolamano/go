@@ -25,8 +25,10 @@ const maxDocumentSize = 1 << 20
 //
 // The members are read as [Parse] reads them. In addition, relative "type" and
 // "instance" members are resolved against the URL of resp.Request, the last
-// request of any redirect chain. The status code of resp is not consulted: the
-// caller can compare it with [Error.Status].
+// request of any redirect chain. [Type.Match] resolves a relative declared type
+// against the same URL, so a type declared with the URI that the server writes
+// matches the problem. The status code of resp is not consulted: the caller can
+// compare it with [Error.Status].
 func Read(resp *http.Response) (*Error, error) {
 	if resp == nil {
 		return nil, fmt.Errorf("%w: nil response", ErrNotProblem)
@@ -47,8 +49,11 @@ func Read(resp *http.Response) (*Error, error) {
 		return nil, err
 	}
 	if resp.Request != nil && resp.Request.URL != nil {
-		e.typ = resolve(resp.Request.URL, e.typ)
-		e.instance = resolve(resp.Request.URL, e.instance)
+		// A copy: the caller may change its request after Read returns.
+		base := *resp.Request.URL
+		e.base = &base
+		e.typ = resolve(e.base, e.typ)
+		e.instance = resolve(e.base, e.instance)
 	}
 	return e, nil
 }

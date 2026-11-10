@@ -42,6 +42,19 @@ var (
 		"The service is unavailable.",
 		http.StatusServiceUnavailable,
 	))
+	// sharedCredit is declared with a relative URI, as a service shares it with
+	// its clients.
+	sharedCredit = problem.Must(problem.NewType(
+		"/probs/out-of-credit",
+		"You do not have enough credit.",
+		http.StatusForbidden,
+	))
+	// apiCredit is the absolute form of sharedCredit on the host of apiTarget.
+	apiCredit = problem.Must(problem.NewType(
+		"https://api.example.com/probs/out-of-credit",
+		"You do not have enough credit.",
+		http.StatusForbidden,
+	))
 
 	balance     = problem.Must(problem.NewKey[int]("balance"))
 	accounts    = problem.Must(problem.NewKey[[]string]("accounts"))
@@ -127,6 +140,30 @@ const twoFieldErrorsJSON = `[{"detail":"must be a positive integer","pointer":"#
 func newRequest(tb testing.TB, method, target string) *http.Request {
 	tb.Helper()
 	return httptest.NewRequestWithContext(tb.Context(), method, target, nil)
+}
+
+// apiTarget is the request URL of the responses that response() builds.
+const apiTarget = "https://api.example.com/v1/messages"
+
+// creditDoc returns a problem document of type typ, with a balance of 30.
+func creditDoc(typ string) string {
+	return fmt.Sprintf(`{"type":%q,"title":"You do not have enough credit.","status":403,"balance":30}`, typ)
+}
+
+// readProblem reads doc with Read from a response to a GET of target, or from a
+// response without a request when target is "".
+func readProblem(tb testing.TB, target, doc string) *problem.Error {
+	tb.Helper()
+	resp := response(tb, http.StatusForbidden, problem.MediaType, strings.NewReader(doc))
+	resp.Request = nil
+	if target != "" {
+		resp.Request = newRequest(tb, http.MethodGet, target)
+	}
+	p, err := problem.Read(resp)
+	if err != nil {
+		tb.Fatalf("Read: %v", err)
+	}
+	return p
 }
 
 // checkDocument checks body against the JSON schema of RFC 9457 Appendix A and

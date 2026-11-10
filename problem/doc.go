@@ -115,6 +115,13 @@
 // [Key.Lookup] and [Error.Extensions] can read them. Read also resolves relative
 // "type" and "instance" members against the URL of the request.
 //
+// [Type.Match] compares type URIs exactly. For a problem read with Read, it
+// first resolves a relative declared URI against the same request URL, so the
+// declarations that a service shares with its client package match the problems
+// in its responses, from whichever server answered. Absolute declarations, and
+// every declaration tested against a problem built locally or read with Parse,
+// are compared as written.
+//
 // Read recognizes a problem document by its media type, and returns an error
 // wrapping [ErrNotProblem] without reading the body otherwise. Both functions
 // read at most 1 MiB and return an error wrapping [ErrMalformed] for larger,

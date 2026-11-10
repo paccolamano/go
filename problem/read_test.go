@@ -238,6 +238,27 @@ func TestRead_RoundTrip(t *testing.T) {
 	}
 }
 
+// TestRead_WriteAgain writes a problem read from a response: the document is the
+// one problem/v0.2.0 writes, with the resolved members and no other trace of the
+// request URL (FR-009).
+func TestRead_WriteAgain(t *testing.T) {
+	const (
+		doc  = `{"type":"/probs/out-of-credit","title":"You do not have enough credit.","status":403,"detail":"Your current balance is 30, but that costs 50.","instance":"/account/12345/msgs/abc","balance":30}`
+		want = `{"type":"https://api.example.com/probs/out-of-credit","title":"You do not have enough credit.","status":403,"detail":"Your current balance is 30, but that costs 50.","instance":"https://api.example.com/account/12345/msgs/abc","balance":30}`
+	)
+	p, err := problem.Read(response(t, http.StatusForbidden, problem.MediaType, strings.NewReader(doc)))
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	if err := problem.Write(rec, newRequest(t, http.MethodGet, "/"), p); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if got := rec.Body.String(); got != want {
+		t.Errorf("document =\n%s\nwant\n%s", got, want)
+	}
+}
+
 func TestParse_Edge(t *testing.T) {
 	parse := func(t *testing.T, doc string) *problem.Error {
 		t.Helper()

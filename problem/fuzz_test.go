@@ -1,7 +1,9 @@
 package problem_test
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -81,6 +83,63 @@ func FuzzParse(f *testing.F) {
 			t.Fatalf("Parse of the written document: %v\n%s", err, rec.Body)
 		}
 		sameProblem(t, back, p)
+	})
+}
+
+// FuzzRead checks that a type declared with the type URI of a document, as
+// written, matches the problem that Read reads from it, whatever the request
+// URL.
+func FuzzRead(f *testing.F) {
+	for _, typ := range []string{
+		"/probs/out-of-credit",
+		"https://api.example.com/probs/out-of-credit",
+		"https://other.example.com/probs/out-of-credit",
+		"/probs/other",
+		"//cdn.example.com/probs/out-of-credit",
+		"/probs/./x/../out-of-credit",
+		"/probs/out-of-credit?lang=en#top",
+	} {
+		f.Add(creditDoc(typ), apiTarget)
+		f.Add(creditDoc(typ), "") // no request
+	}
+	f.Add(`{}`, apiTarget)
+	f.Add(`{"type":"/x"}`, "/relative/base")
+	f.Add(`{"type":"/x"}`, "about:blank")
+	f.Add(`{"type":"/x"}`, "mailto:a@b")
+	f.Fuzz(func(t *testing.T, doc, target string) {
+		resp := &http.Response{
+			StatusCode: http.StatusForbidden,
+			Header:     http.Header{"Content-Type": {problem.MediaType}},
+			Body:       io.NopCloser(strings.NewReader(doc)),
+		}
+		if target != "" {
+			u, err := url.Parse(target)
+			if err != nil {
+				return
+			}
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+			req.URL = u
+			resp.Request = req
+		}
+		p, err := problem.Read(resp)
+		if err != nil {
+			return
+		}
+		var members map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(doc), &members); err != nil {
+			return
+		}
+		var typ string
+		if err := json.Unmarshal(members["type"], &typ); err != nil {
+			return
+		}
+		decl, err := problem.NewType(typ, "t", http.StatusBadRequest)
+		if err != nil {
+			return // typ cannot be declared
+		}
+		if got, ok := decl.Match(p); !ok || got != p {
+			t.Fatalf("declared %q, request URL %q: no match for the type %q", typ, target, p.Type())
+		}
 	})
 }
 

@@ -7,6 +7,17 @@ and this module adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- `Type.Match` matches a problem read with `Read` when the type is declared with a relative URI,
+  such as a declaration that a service shares with its client package. `Match` resolves the
+  relative URI against the request URL that `Read` resolved the problem's type against, then
+  compares the two. **Behavior change**: `Match` used to compare the relative declaration with
+  the resolved type, and reported no match, even for a response written from the same
+  declaration. It now reports a match when both name the same path on the server that answered.
+  Absolute declarations, and problems built locally or read with `Parse`, are compared as
+  written, as before. `Error.Type` still returns the resolved URI.
+
 ## [0.2.0] - 2026-10-19
 
 ### Added
