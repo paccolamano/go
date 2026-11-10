@@ -7,6 +7,8 @@ and this module adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-10
+
 ### Security
 
 - `jwt`: `github.com/go-jose/go-jose/v4` is raised from v4.1.5 to v4.1.6, which fixes
