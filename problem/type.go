@@ -1,6 +1,9 @@
 package problem
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Type is a problem type: the type URI that identifies it, a title that is the
 // same for every occurrence, and the status code of every occurrence (RFC 9457
@@ -56,10 +59,17 @@ func (t Type) New(opts ...Option) *Error {
 
 // Match returns the first problem of type t in err's tree, and true. Unlike
 // errors.As, it looks past problems of other types. The tree is walked in the
-// order errors.As uses. Two problems are of the same type when their type URIs
-// are equal; a problem read with [Read] has its type URI resolved first, so a
-// type declared to match another API's problems must use that API's absolute
-// URI.
+// order errors.As uses.
+//
+// A problem is of type t when its type URI equals the URI of t. For a problem
+// that [Read] read from a response to a request, a relative URI of t is first
+// resolved against the request URL that Read resolved the problem's members
+// against. A type that a service declares as "/probs/out-of-credit", and shares
+// with its clients, therefore matches the problems of that path written by the
+// server that answered, whichever server it is. An absolute URI of t, and the
+// URI of t for any other problem, is compared as written: declare an absolute
+// URI to match the problems of one host only. The comparison is exact: letter
+// case, default ports and percent-encodings are not normalized.
 func (t Type) Match(err error) (*Error, bool) {
 	if t.uri == "" {
 		return nil, false
@@ -76,7 +86,7 @@ func match(err error, uri string) (*Error, bool) {
 		switch {
 		case x == nil:
 			return nil, false
-		case x.typ == uri:
+		case x.hasType(uri):
 			return x, true
 		}
 		return match(x.cause, uri)
@@ -90,6 +100,17 @@ func match(err error, uri string) (*Error, bool) {
 		}
 	}
 	return nil, false
+}
+
+// hasType reports whether e is of the type declared with uri. A relative uri,
+// which begins with "/", is resolved against the URL that Read resolved e's
+// members against, so both sides of the comparison share one base. Otherwise
+// uri is compared as written.
+func (e *Error) hasType(uri string) bool {
+	if e.base != nil && strings.HasPrefix(uri, "/") {
+		return e.typ == resolve(e.base, uri)
+	}
+	return e.typ == uri
 }
 
 // Must returns v, and panics with err when err is not nil. It is meant for

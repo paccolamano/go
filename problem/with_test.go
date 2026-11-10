@@ -189,6 +189,40 @@ func TestWith_ReadProblem(t *testing.T) {
 	if len(ext) != 3 {
 		t.Errorf("extensions = %s, want balance, code and request_id", fmtExtensions(d))
 	}
+
+	// The derived problem matches exactly when the original does (FR-006).
+	tests := []struct {
+		name                string
+		p                   *problem.Error
+		wantShared, wantAPI bool
+	}{
+		{"read from a response", p, true, true},
+		{"read without a request", readProblem(t, "", doc), true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := tt.p.With(problem.WithExtension(requestID, "r"))
+			for _, c := range []struct {
+				name string
+				typ  problem.Type
+				want bool
+			}{
+				{"relative declaration", sharedCredit, tt.wantShared},
+				{"absolute declaration", apiCredit, tt.wantAPI},
+			} {
+				if _, ok := c.typ.Match(tt.p); ok != c.want {
+					t.Errorf("%s: Match(original) = %v, want %v", c.name, ok, c.want)
+				}
+				got, ok := c.typ.Match(d)
+				if ok != c.want {
+					t.Errorf("%s: Match(derived) = %v, want %v", c.name, ok, c.want)
+				}
+				if ok && got != d {
+					t.Errorf("%s: Match(derived) returned the original, not the derived problem", c.name)
+				}
+			}
+		})
+	}
 }
 
 func TestWith_NoOptions(t *testing.T) {

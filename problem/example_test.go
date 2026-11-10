@@ -100,6 +100,40 @@ func ExampleType_Match() {
 	// out of credit: Balance 30, cost 50.
 }
 
+func ExampleType_Match_shared() {
+	// Declared by the service, and shared with its clients.
+	outOfCredit := problem.Must(problem.NewType(
+		"/probs/out-of-credit",
+		"You do not have enough credit.",
+		http.StatusForbidden,
+	))
+
+	// The service answers a request.
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost,
+		"https://api.example.com/v1/messages", nil)
+	rec := httptest.NewRecorder()
+	if err := problem.Write(rec, req, outOfCredit.New()); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// The client reads the response, with its request URL, as http.Client returns it.
+	resp := rec.Result()
+	resp.Request = req
+	defer func() { _ = resp.Body.Close() }()
+	p, err := problem.Read(resp)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(p.Type())
+	_, ok := outOfCredit.Match(p)
+	fmt.Println(ok)
+	// Output:
+	// https://api.example.com/probs/out-of-credit
+	// true
+}
+
 func ExampleWrite_error() {
 	// An error that is not a problem never reaches the client.
 	err := errors.New(`pq: password authentication failed for user "admin"`)
