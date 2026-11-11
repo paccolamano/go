@@ -3,6 +3,7 @@ package problem_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -88,7 +89,7 @@ func FuzzParse(f *testing.F) {
 
 // FuzzRead checks that a type declared with the type URI of a document, as
 // written, matches the problem that Read reads from it, whatever the request
-// URL.
+// URL. It also checks the properties of FR-015 of spec 015 with checkResolved.
 func FuzzRead(f *testing.F) {
 	for _, typ := range []string{
 		"/probs/out-of-credit",
@@ -106,12 +107,25 @@ func FuzzRead(f *testing.F) {
 	f.Add(`{"type":"/x"}`, "/relative/base")
 	f.Add(`{"type":"/x"}`, "about:blank")
 	f.Add(`{"type":"/x"}`, "mailto:a@b")
+	// Request URLs with a user name and a password, a query and a fragment; with
+	// a user name only; and with neither.
+	targets := []string{
+		withCredentials(f, "http://api.example.com/v1/accounts/42?api_key=XYZ").String(),
+		(&url.URL{Scheme: "http", User: url.User("svc"), Host: "api.example.com", Path: "/v1"}).String(),
+		"http://api.example.com/v1/accounts/42?api_key=XYZ",
+	}
+	for _, inst := range []string{"#msg-1", "#", "?page=2", "msgs/1", "/a/b", "//"} {
+		for _, target := range targets {
+			f.Add(fmt.Sprintf(`{"type":"/probs/out-of-credit","instance":%q}`, inst), target)
+		}
+	}
 	f.Fuzz(func(t *testing.T, doc, target string) {
 		resp := &http.Response{
 			StatusCode: http.StatusForbidden,
 			Header:     http.Header{"Content-Type": {problem.MediaType}},
 			Body:       io.NopCloser(strings.NewReader(doc)),
 		}
+		var before string
 		if target != "" {
 			u, err := url.Parse(target)
 			if err != nil {
@@ -119,11 +133,15 @@ func FuzzRead(f *testing.F) {
 			}
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 			req.URL = u
+			before = u.String()
 			resp.Request = req
 		}
 		p, err := problem.Read(resp)
 		if err != nil {
 			return
+		}
+		if resp.Request != nil {
+			checkResolved(t, resp.Request.URL, before, doc, p)
 		}
 		var members map[string]json.RawMessage
 		if err := json.Unmarshal([]byte(doc), &members); err != nil {
@@ -141,6 +159,59 @@ func FuzzRead(f *testing.F) {
 			t.Fatalf("declared %q, request URL %q: no match for the type %q", typ, target, p.Type())
 		}
 	})
+}
+
+// checkResolved checks the properties of FR-015 (spec 015) on p, read from doc
+// with the request URL u: Read leaves u unchanged; for a request URL without
+// userinfo and without a fragment, the members resolve as in problem/v0.2.1;
+// and a member without an authority of its own takes neither the userinfo nor
+// the fragment of u.
+func checkResolved(t *testing.T, u *url.URL, before, doc string, p *problem.Error) {
+	t.Helper()
+	if u.String() != before {
+		t.Fatalf("Read changed the request URL from %q to %q", before, u)
+	}
+	raw, err := problem.Parse([]byte(doc))
+	if err != nil {
+		t.Fatalf("Parse of a document that Read accepted: %v", err)
+	}
+	for _, m := range []struct{ name, written, got string }{
+		{"type", raw.Type(), p.Type()},
+		{"instance", raw.Instance(), p.Instance()},
+	} {
+		if m.written == "" {
+			continue
+		}
+		ref, err := url.Parse(m.written)
+		if err != nil {
+			t.Fatalf("%s %q: accepted by Read, refused by url.Parse: %v", m.name, m.written, err)
+		}
+		// As problem/v0.2.1 resolved, for a request URL that the fix leaves alone.
+		if u.User == nil && u.Fragment == "" && u.RawFragment == "" {
+			want := m.written
+			if !ref.IsAbs() {
+				want = u.ResolveReference(ref).String()
+			}
+			if m.got != want {
+				t.Fatalf("%s %q, request URL %q: got %q, problem/v0.2.1 gave %q", m.name, m.written, before, m.got, want)
+			}
+		}
+		// A member with an authority of its own is the server's content.
+		if ref.IsAbs() || ref.Host != "" || ref.User != nil {
+			continue
+		}
+		res, err := url.Parse(m.got)
+		if err != nil {
+			t.Fatalf("%s %q, request URL %q: %q does not parse: %v", m.name, m.written, before, m.got, err)
+		}
+		if res.User != nil {
+			t.Fatalf("%s %q, request URL %q: %q has a userinfo", m.name, m.written, before, m.got)
+		}
+		if res.Fragment != ref.Fragment {
+			t.Fatalf("%s %q, request URL %q: %q has the fragment %q, want %q",
+				m.name, m.written, before, m.got, res.Fragment, ref.Fragment)
+		}
+	}
 }
 
 // decodePointer decodes a JSON Pointer in URI fragment form (RFC 6901 §6)

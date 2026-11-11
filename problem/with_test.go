@@ -195,13 +195,21 @@ func TestWith_ReadProblem(t *testing.T) {
 		name                string
 		p                   *problem.Error
 		wantShared, wantAPI bool
+		wantType            string
 	}{
-		{"read from a response", p, true, true},
-		{"read without a request", readProblem(t, "", doc), true, false},
+		{"read from a response", p, true, true, "https://api.example.com/probs/out-of-credit"},
+		{"read without a request", readProblem(t, "", doc), true, false, "/probs/out-of-credit"},
+		{
+			"read with credentials", readFrom(t, withCredentials(t, apiTarget), doc), true, true,
+			"https://api.example.com/probs/out-of-credit",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			d := tt.p.With(problem.WithExtension(requestID, "r"))
+			if got := d.Type(); got != tt.wantType {
+				t.Errorf("Type() of the derived problem = %q, want %q", got, tt.wantType)
+			}
 			for _, c := range []struct {
 				name string
 				typ  problem.Type

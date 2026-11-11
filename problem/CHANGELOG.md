@@ -7,6 +7,19 @@ and this module adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Security
+
+- `Read` resolves relative `type` and `instance` members against the URL that the request sent:
+  the request URL without its userinfo and its fragment, with its query. **Behavior change**:
+  when the request URL held a user name or a password, `Read` copied them into the type and
+  instance URIs of the problem it read. From there they reached the problem's message, so the
+  logs, and the response of any service that writes the problem again. These URIs no longer
+  contain them. For such requests, `Type.Match` now also matches a relative declaration with a
+  problem whose type is the absolute URI on the server that answered, and an absolute
+  declaration with a problem whose type is relative, as it does for other requests. An
+  `instance` or a `type` that is just `#` no longer takes the fragment of the request URL.
+  Request URLs without userinfo and without a fragment give the same results as before.
+
 ## [0.2.1] - 2026-11-10
 
 ### Fixed

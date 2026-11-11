@@ -158,107 +158,127 @@ func TestMatch_Tree(t *testing.T) {
 
 // TestMatch_ReadResponse applies the type test to problems read from a response
 // to a request for apiTarget, and to problems from the other sources of FR-007.
+// The table is read from apiTarget, and from apiTarget with credentials and a
+// fragment added, which give the same results (FR-008 of spec 015).
 func TestMatch_ReadResponse(t *testing.T) {
 	cdnCredit := problem.Must(problem.NewType(
 		"//cdn.example.com/probs/out-of-credit", "You do not have enough credit.", http.StatusForbidden))
-	parse := func(doc string) *problem.Error {
+	parse := func(tb testing.TB, doc string) *problem.Error {
+		tb.Helper()
 		p, err := problem.Parse([]byte(doc))
 		if err != nil {
-			t.Fatalf("Parse: %v", err)
+			tb.Fatalf("Parse: %v", err)
 		}
 		return p
 	}
-	// The rows of FR-007 (spec 012). Only the first two changed from problem/v0.2.0.
-	tests := []struct {
-		name     string
-		typ      problem.Type
-		p        *problem.Error
-		wantType string
-		want     bool
+	bases := []struct {
+		name string
+		read func(tb testing.TB, doc string) *problem.Error
 	}{
-		{
-			"relative, same relative type", sharedCredit,
-			readProblem(t, apiTarget, creditDoc("/probs/out-of-credit")),
-			"https://api.example.com/probs/out-of-credit", true,
-		},
-		{
-			"relative, same absolute type", sharedCredit,
-			readProblem(t, apiTarget, creditDoc("https://api.example.com/probs/out-of-credit")),
-			"https://api.example.com/probs/out-of-credit", true,
-		},
-		{
-			"relative, other host", sharedCredit,
-			readProblem(t, apiTarget, creditDoc("https://other.example.com/probs/out-of-credit")),
-			"https://other.example.com/probs/out-of-credit", false,
-		},
-		{
-			"relative, other path", sharedCredit,
-			readProblem(t, apiTarget, creditDoc("/probs/other")),
-			"https://api.example.com/probs/other", false,
-		},
-		{
-			"relative, read without a request", sharedCredit,
-			readProblem(t, "", creditDoc("/probs/out-of-credit")),
-			"/probs/out-of-credit", true,
-		},
-		{
-			"relative, parsed relative type", sharedCredit,
-			parse(creditDoc("/probs/out-of-credit")),
-			"/probs/out-of-credit", true,
-		},
-		{
-			"relative, parsed absolute type", sharedCredit,
-			parse(creditDoc("https://api.example.com/probs/out-of-credit")),
-			"https://api.example.com/probs/out-of-credit", false,
-		},
-		{
-			"relative, built locally", sharedCredit,
-			sharedCredit.New(problem.WithExtension(balance, 30)),
-			"/probs/out-of-credit", true,
-		},
-		{
-			"absolute, read relative type", apiCredit,
-			readProblem(t, apiTarget, creditDoc("/probs/out-of-credit")),
-			"https://api.example.com/probs/out-of-credit", true,
-		},
-		{
-			"absolute, parsed relative type", apiCredit,
-			parse(creditDoc("/probs/out-of-credit")),
-			"/probs/out-of-credit", false,
-		},
-		// Spec edge cases.
-		{
-			"network path", cdnCredit,
-			readProblem(t, apiTarget, creditDoc("//cdn.example.com/probs/out-of-credit")),
-			"https://cdn.example.com/probs/out-of-credit", true,
-		},
-		{
-			"document without a type", sharedCredit,
-			readProblem(t, apiTarget, `{"status":403}`),
-			"about:blank", false,
-		},
+		{"request URL", func(tb testing.TB, doc string) *problem.Error {
+			tb.Helper()
+			return readProblem(tb, apiTarget, doc)
+		}},
+		{"request URL with credentials and a fragment", func(tb testing.TB, doc string) *problem.Error {
+			tb.Helper()
+			return readFrom(tb, withCredentials(tb, apiTarget), doc)
+		}},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.p.Type(); got != tt.wantType {
-				t.Errorf("Type() = %q, want %q", got, tt.wantType)
+	for _, base := range bases {
+		t.Run(base.name, func(t *testing.T) {
+			// The rows of FR-007 (spec 012). Only the first two changed from problem/v0.2.0.
+			tests := []struct {
+				name     string
+				typ      problem.Type
+				p        *problem.Error
+				wantType string
+				want     bool
+			}{
+				{
+					"relative, same relative type", sharedCredit,
+					base.read(t, creditDoc("/probs/out-of-credit")),
+					"https://api.example.com/probs/out-of-credit", true,
+				},
+				{
+					"relative, same absolute type", sharedCredit,
+					base.read(t, creditDoc("https://api.example.com/probs/out-of-credit")),
+					"https://api.example.com/probs/out-of-credit", true,
+				},
+				{
+					"relative, other host", sharedCredit,
+					base.read(t, creditDoc("https://other.example.com/probs/out-of-credit")),
+					"https://other.example.com/probs/out-of-credit", false,
+				},
+				{
+					"relative, other path", sharedCredit,
+					base.read(t, creditDoc("/probs/other")),
+					"https://api.example.com/probs/other", false,
+				},
+				{
+					"relative, read without a request", sharedCredit,
+					readProblem(t, "", creditDoc("/probs/out-of-credit")),
+					"/probs/out-of-credit", true,
+				},
+				{
+					"relative, parsed relative type", sharedCredit,
+					parse(t, creditDoc("/probs/out-of-credit")),
+					"/probs/out-of-credit", true,
+				},
+				{
+					"relative, parsed absolute type", sharedCredit,
+					parse(t, creditDoc("https://api.example.com/probs/out-of-credit")),
+					"https://api.example.com/probs/out-of-credit", false,
+				},
+				{
+					"relative, built locally", sharedCredit,
+					sharedCredit.New(problem.WithExtension(balance, 30)),
+					"/probs/out-of-credit", true,
+				},
+				{
+					"absolute, read relative type", apiCredit,
+					base.read(t, creditDoc("/probs/out-of-credit")),
+					"https://api.example.com/probs/out-of-credit", true,
+				},
+				{
+					"absolute, parsed relative type", apiCredit,
+					parse(t, creditDoc("/probs/out-of-credit")),
+					"/probs/out-of-credit", false,
+				},
+				// Spec edge cases.
+				{
+					"network path", cdnCredit,
+					base.read(t, creditDoc("//cdn.example.com/probs/out-of-credit")),
+					"https://cdn.example.com/probs/out-of-credit", true,
+				},
+				{
+					"document without a type", sharedCredit,
+					base.read(t, `{"status":403}`),
+					"about:blank", false,
+				},
 			}
-			got, ok := tt.typ.Match(tt.p)
-			if ok != tt.want {
-				t.Fatalf("Match = %v, want %v (type %q)", ok, tt.want, tt.p.Type())
-			}
-			if !tt.want {
-				if got != nil {
-					t.Errorf("Match = %v, want nil", got)
-				}
-				return
-			}
-			if got != tt.p {
-				t.Errorf("Match returned %v, not the problem", got)
-			}
-			// Every matching row has the balance of creditDoc.
-			if v, ok := balance.Lookup(got); !ok || v != 30 {
-				t.Errorf("balance = %d, %v; want 30, true", v, ok)
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					if got := tt.p.Type(); got != tt.wantType {
+						t.Errorf("Type() = %q, want %q", got, tt.wantType)
+					}
+					got, ok := tt.typ.Match(tt.p)
+					if ok != tt.want {
+						t.Fatalf("Match = %v, want %v (type %q)", ok, tt.want, tt.p.Type())
+					}
+					if !tt.want {
+						if got != nil {
+							t.Errorf("Match = %v, want nil", got)
+						}
+						return
+					}
+					if got != tt.p {
+						t.Errorf("Match returned %v, not the problem", got)
+					}
+					// Every matching row has the balance of creditDoc.
+					if v, ok := balance.Lookup(got); !ok || v != 30 {
+						t.Errorf("balance = %d, %v; want 30, true", v, ok)
+					}
+				})
 			}
 		})
 	}
@@ -400,6 +420,7 @@ func TestMatch_ReadTree(t *testing.T) {
 		pa := readProblem(t, "https://a.example.com/v1", creditDoc("/probs/out-of-credit"))
 		pb := readProblem(t, "https://b.example.com/v1", creditDoc("/probs/out-of-credit"))
 		pOther := readProblem(t, "https://a.example.com/v1", creditDoc("/probs/other"))
+		pc := readFrom(t, withCredentials(t, "https://b.example.com/v1"), creditDoc("/probs/out-of-credit"))
 		bCredit := problem.Must(problem.NewType(
 			"https://b.example.com/probs/out-of-credit", "You do not have enough credit.", http.StatusForbidden))
 		tests := []struct {
@@ -411,6 +432,9 @@ func TestMatch_ReadTree(t *testing.T) {
 			{"first match wins", sharedCredit, errors.Join(serviceUnavailable.New(), pa, pb), pa},
 			{"past a problem of another type", sharedCredit, errors.Join(pOther, pb), pb},
 			{"each with its own URL", bCredit, errors.Join(pa, pb), pb},
+			{"with credentials, first match wins", sharedCredit, errors.Join(pc, pa), pc},
+			// Matches only when the type of pc holds no credentials.
+			{"with credentials, each with its own URL", bCredit, errors.Join(pa, pc), pc},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

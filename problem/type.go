@@ -63,8 +63,8 @@ func (t Type) New(opts ...Option) *Error {
 //
 // A problem is of type t when its type URI equals the URI of t. For a problem
 // that [Read] read from a response to a request, a relative URI of t is first
-// resolved against the request URL that Read resolved the problem's members
-// against. A type that a service declares as "/probs/out-of-credit", and shares
+// resolved against the URL that Read resolved the problem's members against.
+// A type that a service declares as "/probs/out-of-credit", and shares
 // with its clients, therefore matches the problems of that path written by the
 // server that answered, whichever server it is. An absolute URI of t, and the
 // URI of t for any other problem, is compared as written: declare an absolute

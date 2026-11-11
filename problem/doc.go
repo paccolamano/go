@@ -113,10 +113,11 @@
 // member whose value has the wrong JSON type is ignored, a missing type is
 // "about:blank", and extensions are kept whether or not they are known, so
 // [Key.Lookup] and [Error.Extensions] can read them. Read also resolves relative
-// "type" and "instance" members against the URL of the request.
+// "type" and "instance" members against the URL that the request sent: the
+// request URL without its userinfo and its fragment.
 //
 // [Type.Match] compares type URIs exactly. For a problem read with Read, it
-// first resolves a relative declared URI against the same request URL, so the
+// first resolves a relative declared URI against the same URL, so the
 // declarations that a service shares with its client package match the problems
 // in its responses, from whichever server answered. Absolute declarations, and
 // every declaration tested against a problem built locally or read with Parse,

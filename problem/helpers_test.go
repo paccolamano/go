@@ -166,6 +166,44 @@ func readProblem(tb testing.TB, target, doc string) *problem.Error {
 	return p
 }
 
+// withCredentials returns target with the user name "svc", the password
+// "s3cret" and the fragment "frag" added, as an HTTP client may hold them. The
+// userinfo is built with url.UserPassword, so that no URL literal with
+// credentials appears in the sources.
+func withCredentials(tb testing.TB, target string) *url.URL {
+	tb.Helper()
+	u, err := url.Parse(target)
+	if err != nil {
+		tb.Fatalf("url.Parse(%q): %v", target, err)
+	}
+	u.User = url.UserPassword("svc", "s3cret")
+	u.Fragment = "frag"
+	return u
+}
+
+// readFrom reads doc with Read from a response to a GET of u, built as a client
+// builds it: http.NewRequestWithContext keeps the userinfo and the fragment of
+// u in the request URL, where httptest.NewRequest would move the fragment into
+// the query. It fails tb when Read changes the request URL.
+func readFrom(tb testing.TB, u *url.URL, doc string) *problem.Error {
+	tb.Helper()
+	req, err := http.NewRequestWithContext(tb.Context(), http.MethodGet, u.String(), nil)
+	if err != nil {
+		tb.Fatalf("NewRequest: %v", err)
+	}
+	before := req.URL.String()
+	resp := response(tb, http.StatusForbidden, problem.MediaType, strings.NewReader(doc))
+	resp.Request = req
+	p, err := problem.Read(resp)
+	if err != nil {
+		tb.Fatalf("Read: %v", err)
+	}
+	if after := req.URL.String(); after != before {
+		tb.Errorf("Read changed the request URL from %q to %q", before, after)
+	}
+	return p
+}
+
 // checkDocument checks body against the JSON schema of RFC 9457 Appendix A and
 // the extension name syntax of §3.2, and returns its members.
 func checkDocument(tb testing.TB, body []byte, wantStatus int) map[string]json.RawMessage {
