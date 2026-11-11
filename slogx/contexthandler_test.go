@@ -19,20 +19,20 @@ func requestContext() context.Context {
 	return slogx.With(withRID(context.Background(), "abc"), slog.String("tenant", "t1"))
 }
 
-func TestContextHandler_Conformance(t *testing.T) {
+func TestContext_Conformance(t *testing.T) {
 	t.Run("no context attributes", func(t *testing.T) {
 		testConformance(t, func(next slog.Handler) slog.Handler {
-			return must(slogx.NewContextHandler(next))
+			return must(slogx.New(next))
 		})
 	})
 	t.Run("context attributes on every record", func(t *testing.T) {
 		testConformance(t, func(next slog.Handler) slog.Handler {
-			return must(slogx.NewContextHandler(next, slogx.WithContextFunc(alwaysAttr)))
+			return must(slogx.New(next, slogx.WithContextFunc(alwaysAttr)))
 		})
 	})
 }
 
-func TestContextHandler_TopLevel(t *testing.T) {
+func TestContext_TopLevel(t *testing.T) {
 	var buf bytes.Buffer
 	ctx := slogx.With(context.Background(), slog.String("tenant", "t1"))
 	contextLogger(t, &buf).InfoContext(ctx, "order created")
@@ -41,7 +41,7 @@ func TestContextHandler_TopLevel(t *testing.T) {
 	}
 }
 
-func TestContextHandler_ExtractionFunc(t *testing.T) {
+func TestContext_ExtractionFunc(t *testing.T) {
 	var buf bytes.Buffer
 	logger := contextLogger(t, &buf, slogx.WithContextFunc(ridAttrs))
 	logger.InfoContext(withRID(context.Background(), "abc"), "with id")
@@ -56,7 +56,7 @@ func TestContextHandler_ExtractionFunc(t *testing.T) {
 	}
 }
 
-func TestContextHandler_GroupsKeepContextAtTop(t *testing.T) {
+func TestContext_GroupsKeepContextAtTop(t *testing.T) {
 	tests := []struct {
 		name string
 		log  func(*slog.Logger, context.Context)
@@ -102,7 +102,7 @@ func TestContextHandler_GroupsKeepContextAtTop(t *testing.T) {
 	}
 }
 
-func TestContextHandler_RecordWins(t *testing.T) {
+func TestContext_RecordWins(t *testing.T) {
 	ctx := withRID(context.Background(), "xyz")
 	tests := []struct {
 		name string
@@ -148,7 +148,7 @@ func TestContextHandler_RecordWins(t *testing.T) {
 	})
 }
 
-func TestContextHandler_Precedence(t *testing.T) {
+func TestContext_Precedence(t *testing.T) {
 	extracted := func(ctx context.Context) []slog.Attr {
 		return []slog.Attr{
 			slog.String("k", "extracted"),
@@ -167,7 +167,7 @@ func TestContextHandler_Precedence(t *testing.T) {
 	}
 }
 
-func TestContextHandler_OrderStable(t *testing.T) {
+func TestContext_OrderStable(t *testing.T) {
 	ctx := slogx.With(context.Background(), slog.String("c", "ctx"))
 	var buf bytes.Buffer
 	logger := contextLogger(t, &buf).With("l", "logger")
@@ -183,7 +183,7 @@ func TestContextHandler_OrderStable(t *testing.T) {
 	}
 }
 
-func TestContextHandler_NoContextMethod(t *testing.T) {
+func TestContext_NoContextMethod(t *testing.T) {
 	static := func(context.Context) []slog.Attr { return []slog.Attr{slog.String("service", "api")} }
 	var buf bytes.Buffer
 	contextLogger(t, &buf, slogx.WithContextFunc(ridAttrs), slogx.WithContextFunc(static)).Info("m")
@@ -208,9 +208,9 @@ func (h *recordingHandler) Handle(_ context.Context, r slog.Record) error {
 func (h *recordingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
 func (h *recordingHandler) WithGroup(string) slog.Handler      { return h }
 
-func TestContextHandler_Unchanged(t *testing.T) {
+func TestContext_Unchanged(t *testing.T) {
 	next := &recordingHandler{}
-	h := must(slogx.NewContextHandler(next))
+	h := must(slogx.New(next))
 	r := slog.NewRecord(time.Unix(1, 0), slog.LevelWarn, "m", 0)
 	r.AddAttrs(slog.String("a", "1"), slog.Int("b", 2))
 	if err := h.Handle(context.Background(), r); err != nil {
@@ -222,9 +222,9 @@ func TestContextHandler_Unchanged(t *testing.T) {
 	}
 }
 
-func TestContextHandler_ReturnsNextError(t *testing.T) {
+func TestContext_ReturnsNextError(t *testing.T) {
 	errNext := errors.New("next failed")
-	h := must(slogx.NewContextHandler(&recordingHandler{err: errNext}, slogx.WithContextFunc(alwaysAttr)))
+	h := must(slogx.New(&recordingHandler{err: errNext}, slogx.WithContextFunc(alwaysAttr)))
 	for _, hh := range []slog.Handler{h, h.WithGroup("g")} {
 		if err := hh.Handle(context.Background(), slog.NewRecord(time.Time{}, slog.LevelInfo, "m", 0)); err != errNext { //nolint:errorlint // identity check (FR-005)
 			t.Errorf("err = %v, want the next handler's error unchanged", err)
@@ -232,7 +232,7 @@ func TestContextHandler_ReturnsNextError(t *testing.T) {
 	}
 }
 
-func TestContextHandler_Options(t *testing.T) {
+func TestContext_Options(t *testing.T) {
 	next := newJSON(&bytes.Buffer{}, nil)
 	tests := []struct {
 		name string
@@ -241,21 +241,20 @@ func TestContextHandler_Options(t *testing.T) {
 	}{
 		{"nil next", nil, nil},
 		{"nil function", next, []slogx.Option{slogx.WithContextFunc(nil)}},
-		{"inapplicable option", next, []slogx.Option{slogx.WithRedactKeys("x")}},
 		{"nil option", next, []slogx.Option{nil}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, err := slogx.NewContextHandler(tt.next, tt.opts...)
+			h, err := slogx.New(tt.next, tt.opts...)
 			if !errors.Is(err, slogx.ErrInvalidConfig) || h != nil {
-				t.Errorf("NewContextHandler = %v, %v; want nil, ErrInvalidConfig", h, err)
+				t.Errorf("New = %v, %v; want nil, ErrInvalidConfig", h, err)
 			}
 		})
 	}
 }
 
-func TestContextHandler_Derived(t *testing.T) {
-	h := must(slogx.NewContextHandler(newJSON(&bytes.Buffer{}, nil)))
+func TestContext_Derived(t *testing.T) {
+	h := must(slogx.New(newJSON(&bytes.Buffer{}, nil)))
 	if h.WithGroup("") != slog.Handler(h) {
 		t.Error(`WithGroup("") did not return the receiver`)
 	}
@@ -267,7 +266,7 @@ func TestContextHandler_Derived(t *testing.T) {
 	}
 }
 
-func TestContextHandler_DerivedHandlersIndependent(t *testing.T) {
+func TestContext_DerivedHandlersIndependent(t *testing.T) {
 	var buf bytes.Buffer
 	base := contextLogger(t, &buf).WithGroup("g").With("a", 1)
 	left := base.With("l", 1)
@@ -285,8 +284,8 @@ func TestContextHandler_DerivedHandlersIndependent(t *testing.T) {
 	}
 }
 
-func TestAlloc_ContextHandlerDisabled(t *testing.T) {
-	h := must(slogx.NewContextHandler(newJSON(&bytes.Buffer{}, nil), slogx.WithContextFunc(ridAttrs)))
+func TestAlloc_ContextDisabled(t *testing.T) {
+	h := must(slogx.New(newJSON(&bytes.Buffer{}, nil), slogx.WithContextFunc(ridAttrs)))
 	assertNoAllocsWhenDisabled(t, h, requestContext(), context.Background())
 	assertNoAllocsWhenDisabled(t, h.WithGroup("g").WithAttrs([]slog.Attr{slog.Int("a", 1)}), requestContext())
 }

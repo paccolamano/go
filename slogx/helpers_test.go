@@ -80,6 +80,13 @@ func ridAttrs(ctx context.Context) []slog.Attr {
 	return nil
 }
 
+// ridFrom reads the identifier stored by withRID. It has the signature of
+// requestid.FromContext.
+func ridFrom(ctx context.Context) (string, bool) {
+	id, ok := ctx.Value(ridKey{}).(string)
+	return id, ok
+}
+
 // recordWith returns an Info record with message "m" and attrs.
 func recordWith(attrs ...slog.Attr) slog.Record {
 	r := slog.NewRecord(time.Time{}, slog.LevelInfo, "m", 0)

@@ -6,169 +6,131 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 )
 
-// ErrInvalidConfig is wrapped by every error a constructor of this package
-// returns.
+// ErrInvalidConfig is wrapped by every error New returns.
 var ErrInvalidConfig = errors.New("slogx: invalid configuration")
 
-// Option configures a handler. Each constructor accepts the options listed in
-// its documentation; any other option makes it return an error wrapping
-// ErrInvalidConfig.
+// Option configures New. Every option applies, in any combination.
 type Option func(*config)
 
-// optionSet records which options were given, for the applicability checks.
-type optionSet uint8
+type config struct {
+	sources []source     // extraction functions and context values, in configuration order
+	keys    []string     // sensitive keys
+	level   slog.Leveler // nil without WithDefaultLevel
+	err     error        // the first invalid option, which New reports
+}
 
-const (
-	optContextFunc optionSet = 1 << iota
-	optRedactKeys
-	optSampling
-	optSampleErrors
-)
-
-// optionNames lists every option in the order the checks report them.
-func optionNames() []struct {
-	opt  optionSet
-	name string
-} {
-	return []struct {
-		opt  optionSet
-		name string
-	}{
-		{optContextFunc, "WithContextFunc"},
-		{optRedactKeys, "WithRedactKeys"},
-		{optSampling, "WithSampling"},
-		{optSampleErrors, "WithSampleErrors"},
+// WithDefaultLevel sets the minimum level of the records logged with a context
+// that carries no level (WithLevel). For those records, the Handler compares
+// the level with it alone and does not ask the next handler, so the threshold
+// holds whatever the next handler enables. The level is read at every record:
+// pass a *slog.LevelVar to change it at run time. When given several times, the
+// last one applies. A nil level, or a nil *slog.LevelVar, is invalid.
+//
+// It is required when the next handler is a Fanout.
+func WithDefaultLevel(level slog.Leveler) Option {
+	return func(c *config) {
+		if lv, ok := level.(*slog.LevelVar); level == nil || ok && lv == nil {
+			c.fail("WithDefaultLevel", "must not be nil")
+			return
+		}
+		c.level = level
 	}
 }
 
-type config struct {
-	fns          []func(context.Context) []slog.Attr
-	keys         []string
-	noKeys       bool // WithRedactKeys was called without keys
-	first        int
-	thereafter   int
-	interval     time.Duration
-	sampleErrors bool
-	set          optionSet
+// fail records the first invalid option.
+func (c *config) fail(option, reason string) {
+	if c.err == nil {
+		c.err = invalid(option, reason)
+	}
 }
 
 // WithContextFunc adds a function that computes attributes from the context of
-// every handled record, for example a request identifier stored by another
-// package. It is called only for enabled records. It can be given several
-// times: when two functions return the same key, the first one configured wins,
-// and attributes attached with With win over both.
-//
-// Accepted by New and NewContextHandler.
+// every handled record, such as the trace and span identifiers of a tracing
+// library. It is called only for enabled records. Use WithContextValue for a
+// single value. It can be given several times: when extraction functions and
+// context values produce the same key, the one configured first wins, and
+// attributes attached with With win over all of them.
 func WithContextFunc(fn func(ctx context.Context) []slog.Attr) Option {
 	return func(c *config) {
-		c.fns = append(c.fns, fn)
-		c.set |= optContextFunc
+		if fn == nil {
+			c.fail("WithContextFunc", "function must not be nil")
+			return
+		}
+		c.sources = append(c.sources, source{fn: fn})
+	}
+}
+
+// WithContextValue adds the attribute key, with the value get returns, to every
+// enabled record whose context carries it, that is, for which get returns true:
+//
+//	slogx.WithContextValue("request_id", requestid.FromContext)
+//
+// The attribute follows the rules of WithContextFunc: it is placed at the top
+// level, the record's attributes and those attached with With win over it, and
+// among context values and extraction functions the first configured wins. get
+// is not called for disabled records, nor when the key is already taken. The
+// value is logged as any attribute value: a Secret is written [REDACTED]. A get
+// that panics is replaced by the placeholder of extraction functions. An empty
+// key, or a nil get, is invalid. Use WithContextFunc for a function that
+// returns several attributes.
+func WithContextValue[T any](key string, get func(ctx context.Context) (T, bool)) Option {
+	return func(c *config) {
+		switch {
+		case strings.TrimSpace(key) == "":
+			c.fail("WithContextValue", "empty key")
+			return
+		case get == nil:
+			c.fail("WithContextValue", "function must not be nil")
+			return
+		}
+		c.sources = append(c.sources, source{key: key, get: func(ctx context.Context) (slog.Value, bool) {
+			v, ok := get(ctx)
+			if !ok {
+				return slog.Value{}, false
+			}
+			return slog.AnyValue(v), true
+		}})
 	}
 }
 
 // WithRedactKeys adds sensitive keys. The value of every attribute whose key
 // equals one of them, compared without regard to case and at any depth, is
 // written as [REDACTED]. It can be given several times: the keys accumulate.
-//
-// Accepted by New and NewRedactHandler, which requires it.
 func WithRedactKeys(keys ...string) Option {
 	return func(c *config) {
 		if len(keys) == 0 {
-			c.noKeys = true
+			c.fail("WithRedactKeys", "at least one key is required")
+			return
+		}
+		for _, k := range keys {
+			if strings.TrimSpace(k) == "" {
+				c.fail("WithRedactKeys", "empty key")
+				return
+			}
 		}
 		c.keys = append(c.keys, keys...)
-		c.set |= optRedactKeys
 	}
 }
 
-// WithSampling samples repeated records: in each interval, the first records of
-// each level and message pass, then one every thereafter. first and thereafter
-// must be at least 1, and interval must be positive. When given several times,
-// the last call wins.
-//
-// Accepted by New and NewSamplingHandler, which requires it.
-func WithSampling(first, thereafter int, interval time.Duration) Option {
-	return func(c *config) {
-		c.first, c.thereafter, c.interval = first, thereafter, interval
-		c.set |= optSampling
-	}
-}
-
-// WithSampleErrors samples records at slog.LevelError and above too. Without
-// it, they are always written. It requires WithSampling.
-//
-// Accepted by New and NewSamplingHandler.
-func WithSampleErrors() Option {
-	return func(c *config) {
-		c.sampleErrors = true
-		c.set |= optSampleErrors
-	}
-}
-
-// newConfig applies opts for the constructor ctor, then checks that every
-// option is in accepted, that every option in required was given, and that the
-// values are valid.
-func newConfig(ctor string, accepted, required optionSet, opts []Option) (config, error) {
+// newConfig applies opts in order, and returns the first invalid option.
+func newConfig(opts []Option) (config, error) {
 	var c config
 	for i, opt := range opts {
 		if opt == nil {
-			return config{}, invalid(ctor, fmt.Sprintf("options[%d]", i), "must not be nil")
+			return config{}, invalid(fmt.Sprintf("options[%d]", i), "must not be nil")
 		}
 		opt(&c)
 	}
-	for _, o := range optionNames() {
-		if c.set&o.opt != 0 && accepted&o.opt == 0 {
-			return config{}, invalid(ctor, o.name, "does not apply")
-		}
-	}
-	for _, o := range optionNames() {
-		if required&o.opt != 0 && c.set&o.opt == 0 {
-			return config{}, invalid(ctor, o.name, "required")
-		}
-	}
-	if err := c.validate(ctor); err != nil {
-		return config{}, err
+	if c.err != nil {
+		return config{}, c.err
 	}
 	return c, nil
 }
 
-func (c *config) validate(ctor string) error {
-	for _, fn := range c.fns {
-		if fn == nil {
-			return invalid(ctor, "WithContextFunc", "function must not be nil")
-		}
-	}
-	if c.noKeys {
-		return invalid(ctor, "WithRedactKeys", "at least one key is required")
-	}
-	for _, k := range c.keys {
-		if strings.TrimSpace(k) == "" {
-			return invalid(ctor, "WithRedactKeys", "empty key")
-		}
-	}
-	if c.set&optSampling != 0 {
-		switch {
-		case c.first < 1:
-			return invalid(ctor, "WithSampling", "first must be at least 1")
-		case c.thereafter < 1:
-			return invalid(ctor, "WithSampling", "thereafter must be at least 1")
-		case c.interval <= 0:
-			return invalid(ctor, "WithSampling", "interval must be positive")
-		}
-	}
-	if c.set&optSampleErrors != 0 && c.set&optSampling == 0 {
-		return invalid(ctor, "WithSampleErrors", "requires WithSampling")
-	}
-	return nil
-}
-
-func invalid(ctor, option, reason string) error {
-	return fmt.Errorf("%w: %s: %s: %s", ErrInvalidConfig, ctor, option, reason)
-}
-
-func errNilHandler(ctor string) error {
-	return fmt.Errorf("%w: %s: next: must not be nil", ErrInvalidConfig, ctor)
+// invalid returns an error that wraps ErrInvalidConfig, about subject: an
+// option, or a parameter of New.
+func invalid(subject, reason string) error {
+	return fmt.Errorf("%w: New: %s: %s", ErrInvalidConfig, subject, reason)
 }

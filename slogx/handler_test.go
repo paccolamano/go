@@ -11,38 +11,9 @@ import (
 	"github.com/paccolamano/go/slogx"
 )
 
-// composedOptions are the options of the request's composed example, without
-// sampling.
+// composedOptions are the options of the composed example.
 func composedOptions() []slogx.Option {
 	return []slogx.Option{slogx.WithContextFunc(ridAttrs), slogx.WithRedactKeys(sensitiveKeys...)}
-}
-
-// manualChain builds, with the standalone constructors, the chain that New
-// builds for composedOptions.
-func manualChain(next slog.Handler) slog.Handler {
-	r := must(slogx.NewRedactHandler(next, slogx.WithRedactKeys(sensitiveKeys...)))
-	c := must(slogx.NewContextHandler(r, slogx.WithContextFunc(ridAttrs)))
-	return must(slogx.NewLevelHandler(c))
-}
-
-// composedCases log the same records through any handler.
-func composedCases() []func(*slog.Logger) {
-	request := slogx.With(withRID(context.Background(), "abc"), slog.String("token", "s3cr3t"), slog.String("tenant", "t1"))
-	debug := slogx.WithLevel(request, slog.LevelDebug)
-	return []func(*slog.Logger){
-		func(l *slog.Logger) { l.InfoContext(request, "plain", "password", "hunter2") },
-		func(l *slog.Logger) {
-			l.WithGroup("db").With("table", "orders").InfoContext(request, "grouped", "rows", 3)
-		},
-		func(l *slog.Logger) {
-			l.With("service", "api", "cookie", "c").InfoContext(request, "logger attributes")
-		},
-		func(l *slog.Logger) { l.DebugContext(debug, "context level") },
-		func(l *slog.Logger) { l.DebugContext(request, "not written") },
-		func(l *slog.Logger) { l.InfoContext(request, "duplicate", "request_id", "explicit") },
-		func(l *slog.Logger) { l.WithGroup("Authorization").InfoContext(request, "sealed", "a", 1) },
-		func(l *slog.Logger) { l.Info("no context", "user", userValue{name: "bob", token: "s3cr3t"}) },
-	}
 }
 
 func TestNew_Conformance(t *testing.T) {
@@ -61,25 +32,6 @@ func TestNew_ComposedScenario(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "s3cr3t") {
 		t.Errorf("secret leaked: %s", buf.String())
-	}
-}
-
-func TestCompose_EquivalentToManual(t *testing.T) {
-	var composed, manual bytes.Buffer
-	composedLogger := slog.New(must(slogx.New(newJSON(&composed, slog.LevelInfo), composedOptions()...)))
-	manualLogger := slog.New(manualChain(newJSON(&manual, slog.LevelInfo)))
-	for _, log := range composedCases() {
-		log(composedLogger)
-		log(manualLogger)
-	}
-	if composed.String() != manual.String() {
-		t.Errorf("composed output:\n%s\nmanual output:\n%s", composed.String(), manual.String())
-	}
-	if n := len(lines(t, &composed)); n != 7 {
-		t.Errorf("got %d records, want 7", n)
-	}
-	if strings.Contains(composed.String(), "s3cr3t") || strings.Contains(composed.String(), "hunter2") {
-		t.Errorf("secret leaked: %s", composed.String())
 	}
 }
 
@@ -111,12 +63,57 @@ func TestNew_InvalidOptions(t *testing.T) {
 		{"empty key", next, []slogx.Option{slogx.WithRedactKeys("")}},
 		{"nil function", next, []slogx.Option{slogx.WithContextFunc(nil)}},
 		{"nil option", next, []slogx.Option{nil}},
+		{"nil default level", next, []slogx.Option{slogx.WithDefaultLevel(nil)}},
+		{"empty context value key", next, []slogx.Option{slogx.WithContextValue("", ridFrom)}},
+		{"fanout without default level", slogx.Fanout(next), nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h, err := slogx.New(tt.next, tt.opts...)
 			if !errors.Is(err, slogx.ErrInvalidConfig) || h != nil {
 				t.Errorf("New = %v, %v; want nil, ErrInvalidConfig", h, err)
+			}
+			// FR-017: no option is refused as inapplicable or as required.
+			if err != nil && (strings.HasSuffix(err.Error(), ": does not apply") || strings.HasSuffix(err.Error(), ": required")) {
+				t.Errorf("err = %q, an applicability error", err)
+			}
+		})
+	}
+}
+
+// TestNew_AnyCombination checks that New accepts every option, in any order
+// and any number of times (FR-017).
+func TestNew_AnyCombination(t *testing.T) {
+	get := func(context.Context) (string, bool) { return "v", true }
+	every := []slogx.Option{
+		slogx.WithDefaultLevel(slog.LevelInfo),
+		slogx.WithContextFunc(ridAttrs),
+		slogx.WithContextValue("k", get),
+		slogx.WithRedactKeys("token"),
+	}
+	reversed := []slogx.Option{every[3], every[2], every[1], every[0]}
+	twice := append(every[:len(every):len(every)],
+		slogx.WithDefaultLevel(slog.LevelDebug),
+		slogx.WithContextFunc(alwaysAttr),
+		slogx.WithContextValue("k2", get),
+		slogx.WithRedactKeys("password"),
+	)
+	out := newJSON(&bytes.Buffer{}, nil)
+	tests := []struct {
+		name string
+		next slog.Handler
+		opts []slogx.Option
+	}{
+		{"every option", out, every},
+		{"reverse order", out, reversed},
+		{"every option twice", out, twice},
+		{"over a fanout", slogx.Fanout(out), every},
+		{"no option", out, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if h, err := slogx.New(tt.next, tt.opts...); h == nil || err != nil {
+				t.Errorf("New = %v, %v; want a handler", h, err)
 			}
 		})
 	}

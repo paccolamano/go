@@ -7,6 +7,45 @@ and this module adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Removed
+
+- **Breaking**: the standalone handlers `ContextHandler`, `LevelHandler` and `RedactHandler`, and
+  their constructors `NewContextHandler`, `NewLevelHandler` and `NewRedactHandler`. `New` with
+  the matching option does what each of them did.
+- **Breaking**: sampling: `SamplingHandler`, `NewSamplingHandler`, `WithSampling`,
+  `WithSampleErrors` and `Handler.Flush`.
+
+### Added
+
+- `WithDefaultLevel`, the minimum level of the records logged with a context that carries no
+  level. With it, the next handler is no longer asked whether a level is enabled, so the level
+  applies whatever the outputs enable. A `*slog.LevelVar` changes it at run time.
+- `Fanout`, which passes every record to several outputs without asking them whether they handle
+  its level, so that every output receives the same records. `New` over a `Fanout` requires
+  `WithDefaultLevel`.
+- `WithContextValue`, which adds one attribute read from the context, such as
+  `WithContextValue("request_id", requestid.FromContext)`.
+
+### Changed
+
+- Every option applies to `New`. The configuration errors "does not apply" and "required" no
+  longer exist.
+- `New` reports invalid configuration for a nil default level, an empty key or a nil function of
+  a context value, and a `Fanout` without `WithDefaultLevel`, without output or with a nil
+  output.
+
+### Migration from 0.1.0
+
+| 0.1.0 | 0.2.0 |
+|-------|-------|
+| `NewContextHandler(next, opts...)` | `New(next, opts...)` |
+| `NewLevelHandler(next)` | `New(next)` |
+| `NewRedactHandler(next, WithRedactKeys(keys...))` | `New(next, WithRedactKeys(keys...))` |
+| `NewSamplingHandler`, `WithSampling`, `WithSampleErrors`, `Handler.Flush` | removed: delete the options and the calls to `Flush` |
+| a level handler of one's own above `New` | `WithDefaultLevel` |
+| an extraction function that returns one attribute | `WithContextValue` |
+| `slog.NewMultiHandler` under `New`, meant to give every output the same records | `Fanout`, with `WithDefaultLevel` |
+
 ## [0.1.0] - 2026-10-19
 
 ### Added

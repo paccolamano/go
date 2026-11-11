@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"time"
 
 	"github.com/paccolamano/go/slogx"
 )
@@ -20,7 +19,7 @@ func stdoutJSON() slog.Handler {
 // A service logs with the context it received; the attributes attached
 // upstream appear in its records without passing a logger around.
 func ExampleWith() {
-	h, err := slogx.NewContextHandler(stdoutJSON())
+	h, err := slogx.New(stdoutJSON())
 	if err != nil {
 		panic(err)
 	}
@@ -43,11 +42,18 @@ func requestIDAttrs(ctx context.Context) []slog.Attr {
 	return nil
 }
 
+// requestIDFrom reads the identifier that a middleware stored in the context,
+// as requestid.FromContext does.
+func requestIDFrom(ctx context.Context) (string, bool) {
+	id, ok := ctx.Value(requestIDKey{}).(string)
+	return id, ok
+}
+
 // An extraction function reads a value stored in the context by another
 // package, such as a request identifier, without importing that package here.
 // Context attributes stay at the top level even inside a group.
-func ExampleNewContextHandler() {
-	h, err := slogx.NewContextHandler(stdoutJSON(), slogx.WithContextFunc(requestIDAttrs))
+func ExampleWithContextFunc() {
+	h, err := slogx.New(stdoutJSON(), slogx.WithContextFunc(requestIDAttrs))
 	if err != nil {
 		panic(err)
 	}
@@ -59,10 +65,27 @@ func ExampleNewContextHandler() {
 	// {"level":"INFO","msg":"query","request_id":"abc","db":{"rows":3}}
 }
 
+// A context value logs one value that another package stored in the context,
+// such as the identifier of a request ID middleware, with one option.
+func ExampleWithContextValue() {
+	h, err := slogx.New(stdoutJSON(), slogx.WithContextValue("request_id", requestIDFrom))
+	if err != nil {
+		panic(err)
+	}
+	logger := slog.New(h)
+
+	ctx := context.WithValue(context.Background(), requestIDKey{}, "abc")
+	logger.InfoContext(ctx, "order created", "order", 1001)
+	logger.InfoContext(context.Background(), "no request")
+	// Output:
+	// {"level":"INFO","msg":"order created","request_id":"abc","order":1001}
+	// {"level":"INFO","msg":"no request"}
+}
+
 // Sensitive keys are matched without regard to case and at any depth, such as
 // the Authorization header inside the header group of an access log.
-func ExampleNewRedactHandler() {
-	h, err := slogx.NewRedactHandler(stdoutJSON(), slogx.WithRedactKeys("authorization", "password", "token", "cookie"))
+func ExampleWithRedactKeys() {
+	h, err := slogx.New(stdoutJSON(), slogx.WithRedactKeys("authorization", "password", "token", "cookie"))
 	if err != nil {
 		panic(err)
 	}
@@ -103,7 +126,7 @@ func ExampleSecret() {
 // Debug records are written for one request only, for example one that carries
 // a signed debug header, while the output handler stays at Info.
 func ExampleWithLevel() {
-	h, err := slogx.NewLevelHandler(stdoutJSON())
+	h, err := slogx.New(stdoutJSON())
 	if err != nil {
 		panic(err)
 	}
@@ -114,6 +137,47 @@ func ExampleWithLevel() {
 	logger.DebugContext(debugCtx, "cache miss", "key", "b")
 	// Output:
 	// {"level":"DEBUG","msg":"cache miss","key":"b"}
+}
+
+// The default level applies to the records logged with a context that carries
+// no level, whatever the output enables. A *slog.LevelVar changes it at run
+// time, and a request can still set its own.
+func ExampleWithDefaultLevel() {
+	level := new(slog.LevelVar) // Info
+	h, err := slogx.New(stdoutJSON(), slogx.WithDefaultLevel(level))
+	if err != nil {
+		panic(err)
+	}
+	logger := slog.New(h)
+	ctx := context.Background()
+
+	logger.DebugContext(ctx, "hidden at Info")
+	level.Set(slog.LevelDebug)
+	logger.DebugContext(ctx, "written at Debug")
+	level.Set(slog.LevelWarn)
+	logger.InfoContext(ctx, "hidden at Warn")
+	logger.InfoContext(slogx.WithLevel(ctx, slog.LevelInfo), "written for one request")
+	// Output:
+	// {"level":"DEBUG","msg":"written at Debug"}
+	// {"level":"INFO","msg":"written for one request"}
+}
+
+// Both outputs receive the same records, whatever their own levels: the level
+// is decided once, by the default level. The text output, built for errors
+// only, receives the Info record too.
+func ExampleFanout() {
+	text := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError, ReplaceAttr: dropTime})
+	h, err := slogx.New(slogx.Fanout(stdoutJSON(), text), slogx.WithDefaultLevel(slog.LevelInfo))
+	if err != nil {
+		panic(err)
+	}
+	logger := slog.New(h)
+
+	logger.Debug("cache miss")
+	logger.Info("order created", "order", 1001)
+	// Output:
+	// {"level":"INFO","msg":"order created","order":1001}
+	// level=INFO msg="order created" order=1001
 }
 
 // New composes the handlers in the correct order: the per-request level
@@ -135,37 +199,4 @@ func ExampleNew() {
 	logger.DebugContext(ctx, "cache miss", "key", "orders:1001")
 	// Output:
 	// {"level":"DEBUG","msg":"cache miss","token":"[REDACTED]","request_id":"abc","key":"orders:1001"}
-}
-
-// A burst of identical records is thinned out, and a summary reports the
-// dropped ones. Flush emits the summary of the current interval, for example at
-// shutdown.
-func ExampleNewSamplingHandler() {
-	// The output leaves out times, including the period of the summary.
-	out := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.TimeKey || len(groups) == 1 && groups[0] == "sampling" && (a.Key == "start" || a.Key == "end") {
-				return slog.Attr{}
-			}
-			return a
-		},
-	})
-	h, err := slogx.NewSamplingHandler(out, slogx.WithSampling(2, 10, time.Minute))
-	if err != nil {
-		panic(err)
-	}
-	logger := slog.New(h)
-
-	for range 25 {
-		logger.Warn("db query failed")
-	}
-	if err := h.Flush(context.Background()); err != nil {
-		panic(err)
-	}
-	// Output:
-	// {"level":"WARN","msg":"db query failed"}
-	// {"level":"WARN","msg":"db query failed"}
-	// {"level":"WARN","msg":"db query failed"}
-	// {"level":"WARN","msg":"db query failed"}
-	// {"level":"WARN","msg":"records dropped by sampling","sampling":{"msg":"db query failed","dropped":21}}
 }

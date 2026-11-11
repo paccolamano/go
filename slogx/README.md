@@ -1,8 +1,9 @@
 # slogx
 
-Composable `slog.Handler` middleware: context attributes, redaction of sensitive data, a
-per-request level and sampling of repeated records. It adds no logger type: keep using
-`*slog.Logger`. The module has no dependency outside the standard library.
+A `slog.Handler` for the standard structured logger: context attributes, redaction of sensitive
+data, and a default level and a per-request level decided once for every output. It adds no
+logger type: keep using `*slog.Logger`. The module has no dependency outside the standard
+library.
 
 ```bash
 go get github.com/paccolamano/go/slogx
@@ -14,52 +15,44 @@ Minimum Go version: 1.26
 
 ```go
 h, err := slogx.New(slog.NewJSONHandler(os.Stdout, nil),
-	slogx.WithContextFunc(requestIDAttrs),
+	slogx.WithDefaultLevel(slog.LevelInfo),
+	slogx.WithContextValue("request_id", requestid.FromContext),
 	slogx.WithRedactKeys("authorization", "password", "token", "cookie"),
-	slogx.WithSampling(10, 100, time.Second),
 )
 if err != nil {
 	return err
 }
 logger := slog.New(h)
-// At shutdown, report the records dropped in the last sampling interval:
-// err = h.Flush(context.Background())
 ```
 
-`New` composes the handlers in the only correct order:
+The handler applies, in this order:
 
 ```text
-LevelHandler → SamplingHandler → ContextHandler → RedactHandler → output
+level → context attributes → redaction → output
 ```
 
-- **Level outermost**: the per-request level must be honored before the output handler's
-  threshold discards debug records.
-- **Sampling before context and redaction**: a dropped record costs nothing more, and summaries
-  carry no request attribute.
+- **Level first**: `slog.Logger` asks only the outermost handler whether a level is enabled, so
+  the level is decided once, for every output.
 - **Redaction after context**: a token stored in the context is redacted too.
 
-Each handler is also available on its own (`NewLevelHandler`, `NewSamplingHandler`,
-`NewContextHandler`, `NewRedactHandler`) for finer control. Invalid options are reported as
-errors wrapping `ErrInvalidConfig`.
+Invalid configuration is reported as errors wrapping `ErrInvalidConfig`.
 
 ## Context attributes
 
-Attach attributes to a context with `With`, and read values that other packages stored in it
-with an extraction function. Every record logged with that context carries them, at the top
-level, even inside `logger.WithGroup`:
+Attach attributes to a context with `With`, and read a value that another package stored in it,
+such as the identifier of the `requestid` middleware, with `WithContextValue`. Every record
+logged with that context carries them, at the top level, even inside `logger.WithGroup`:
 
 ```go
-func requestIDAttrs(ctx context.Context) []slog.Attr {
-	if id, ok := requestid.FromContext(ctx); ok {
-		return []slog.Attr{slog.String("request_id", id)}
-	}
-	return nil
-}
+h, err := slogx.New(next, slogx.WithContextValue("request_id", requestid.FromContext))
 
 ctx = slogx.With(ctx, slog.String("tenant", tenantID))
 logger.InfoContext(ctx, "order created")
 // {"level":"INFO","msg":"order created","tenant":"t1","request_id":"abc"}
 ```
+
+`WithContextFunc` remains for a function that returns several attributes, such as the trace and
+span identifiers of the [stdout plus OpenTelemetry recipe](#stdout-plus-opentelemetry).
 
 When the record already has an attribute with the same key at the top level, the record wins
 and the context attribute is skipped. The `accesslog` and `recovery` middleware, which add
@@ -94,7 +87,23 @@ logger.Info("login", "credentials", c) // "credentials":{"User":"bob","Password"
 c.Password.Reveal()                    // the password
 ```
 
-## Per-request level
+## Levels
+
+`WithDefaultLevel` sets the level of the records logged with a context that carries no level.
+The handler applies it without asking the output, so it holds whatever the output enables: the
+OpenTelemetry bridge, for example, enables every level. A `*slog.LevelVar` changes it at run
+time:
+
+```go
+level := new(slog.LevelVar) // Info
+h, err := slogx.New(next, slogx.WithDefaultLevel(level))
+// later, for example on a signal:
+level.Set(slog.LevelDebug)
+```
+
+Without `WithDefaultLevel`, the output decides, through its own level.
+
+`WithLevel` sets the level of one request:
 
 ```go
 if debugRequested(r) {
@@ -103,23 +112,119 @@ if debugRequested(r) {
 logger.DebugContext(ctx, "cache miss") // written for this request only
 ```
 
-The context level replaces the output handler's threshold for the records logged with that
-context, in both directions.
+The context level replaces the default level and the output's own threshold for the records
+logged with that context, in both directions: it can also silence a request.
 
-## Sampling
+## Several outputs
 
-With `WithSampling(10, 100, time.Second)`, the first 10 records of each level and message are
-written in every second, then one every 100. After an interval with drops, one summary per
-group reports them:
+`Fanout` passes every record to several outputs without asking them whether they handle its
+level, so that every output receives the same records: the same levels, the same context
+attributes, the same redaction. The levels of the outputs are ignored: the level is decided
+once, by `New`, which requires `WithDefaultLevel` over a `Fanout`.
 
-```json
-{"level":"WARN","msg":"records dropped by sampling","sampling":{"msg":"db query failed","dropped":9891,"start":"…","end":"…"}}
+- Give the `Fanout` to `New` as the next handler, directly: `New` does not recognize a `Fanout`
+  wrapped in another handler.
+- A `New` used as one output, to add attributes to that output only, is not asked about levels
+  either: give the level to the outer one.
+- For deliberately different thresholds per output, use `slog.NewMultiHandler` instead: each
+  output applies its own level, and the per-request level does not go below it.
+
+## Recipes
+
+The recipes use other modules, which slogx itself does not depend on.
+
+### Colored output while developing
+
+With [`github.com/lmittmann/tint`](https://github.com/lmittmann/tint) and
+[`golang.org/x/term`](https://pkg.go.dev/golang.org/x/term):
+
+```go
+noColor := os.Getenv("NO_COLOR") != "" || !term.IsTerminal(int(os.Stdout.Fd()))
+h, err := slogx.New(tint.NewHandler(os.Stdout, &tint.Options{NoColor: noColor}),
+	slogx.WithDefaultLevel(slog.LevelDebug),
+)
+if err != nil {
+	return err
+}
+logger := slog.New(h)
 ```
 
-Records at Error level and above are always written, unless `WithSampleErrors()` is given. At
-most 1,024 groups are tracked per interval; the records of any other group are written.
-Summaries are emitted by the next record after the interval ends, or by `Flush`, and no
-goroutine is started.
+Colors are off when `NO_COLOR` is set to a non-empty value, or when stdout is not a terminal.
+The level is set on slogx, so tint's own level option is not needed.
+
+### Stdout plus OpenTelemetry
+
+With the OpenTelemetry bridge
+[`go.opentelemetry.io/contrib/bridges/otelslog`](https://pkg.go.dev/go.opentelemetry.io/contrib/bridges/otelslog),
+[`go.opentelemetry.io/otel/trace`](https://pkg.go.dev/go.opentelemetry.io/otel/trace), and
+`github.com/paccolamano/go/middleware/requestid` for the request identifier. `provider` is the
+service's `log.LoggerProvider`.
+
+```go
+// traceAttrs writes the trace and span IDs on stdout. The OpenTelemetry output
+// carries them in its own fields.
+func traceAttrs(ctx context.Context) []slog.Attr {
+	sc := trace.SpanContextFromContext(ctx)
+	if !sc.IsValid() {
+		return nil
+	}
+	return []slog.Attr{
+		slog.String("trace_id", sc.TraceID().String()),
+		slog.String("span_id", sc.SpanID().String()),
+	}
+}
+```
+
+```go
+stdout, err := slogx.New(slog.NewJSONHandler(os.Stdout, nil), slogx.WithContextFunc(traceAttrs))
+if err != nil {
+	return err
+}
+level := new(slog.LevelVar) // Info; level.Set(slog.LevelDebug) changes it at run time
+h, err := slogx.New(
+	slogx.Fanout(stdout, otelslog.NewHandler("orders", otelslog.WithLoggerProvider(provider))),
+	slogx.WithDefaultLevel(level),
+	slogx.WithContextValue("request_id", requestid.FromContext),
+	slogx.WithRedactKeys("authorization", "password", "token", "cookie"),
+)
+if err != nil {
+	return err
+}
+logger := slog.New(h)
+```
+
+- Both outputs receive the same records, with the same levels, context attributes and
+  redaction; the level of each output is not asked.
+- `Fanout` requires `WithDefaultLevel`, and must be the next handler of `New` directly.
+- The trace and span IDs are added on stdout only, by a `New` nested on that output, because the
+  OpenTelemetry bridge records them on its own.
+- The nested `New` is not asked about levels: the level is given to the outer one.
+
+### Different thresholds per output
+
+With the same libraries as the previous recipe:
+
+```go
+h, err := slogx.New(
+	slog.NewMultiHandler(
+		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}),
+		otelslog.NewHandler("orders", otelslog.WithLoggerProvider(provider)),
+	),
+	slogx.WithDefaultLevel(slog.LevelDebug),
+)
+if err != nil {
+	return err
+}
+logger := slog.New(h)
+```
+
+- This uses the standard fan-out on purpose: each output applies its own level.
+- The default level is the lowest level any output receives, and each output's own level raises
+  it: stdout writes Info and above, OpenTelemetry Debug and above.
+- The per-request level does not go below an output's own level: a request at Debug still writes
+  no Debug record on stdout.
+- Without `WithDefaultLevel`, an output that enables every level, such as the OpenTelemetry
+  bridge, would receive every level.
 
 ## Testing with slogxtest
 

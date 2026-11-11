@@ -26,24 +26,24 @@ func benchContext() context.Context {
 	return slogx.With(withRID(context.Background(), "abc"), slog.String("tenant", "t1"))
 }
 
-// benchHandlers returns every handler of the module over next. Sampling lets
-// every record pass, so that the enabled benchmarks measure the full path.
+// benchHandlers returns the handlers that the benchmarks compare, over next.
 func benchHandlers(next slog.Handler) map[string]slog.Handler {
-	passAll := slogx.WithSampling(1<<62, 1, time.Second)
 	keys := slogx.WithRedactKeys(sensitiveKeys...)
-	composed := must(slogx.New(next, slogx.WithContextFunc(ridAttrs), keys, passAll))
+	info := slogx.WithDefaultLevel(slog.LevelInfo)
+	composed := must(slogx.New(next, slogx.WithContextFunc(ridAttrs), keys))
 	return map[string]slog.Handler{
-		"level":          must(slogx.NewLevelHandler(next)),
-		"context":        must(slogx.NewContextHandler(next, slogx.WithContextFunc(ridAttrs))),
-		"redact":         must(slogx.NewRedactHandler(next, keys)),
-		"sampling":       must(slogx.NewSamplingHandler(next, passAll)),
 		"composed":       composed,
 		"composed-group": composed.WithGroup("db"),
+		"value":          must(slogx.New(next, slogx.WithContextValue("request_id", ridFrom), keys, info)),
+		"fanout": must(slogx.New(slogx.Fanout(next, next),
+			slogx.WithContextValue("request_id", ridFrom), slogx.WithContextValue("trace_id", ridFrom), keys, info)),
+		"multi": must(slogx.New(slog.NewMultiHandler(next, next), slogx.WithContextValue("request_id", ridFrom), keys)),
 	}
 }
 
-// BenchmarkDisabled measures records below the threshold: no handler may
-// allocate (FR-004, SC-003).
+// BenchmarkDisabled measures records below the threshold: nothing may
+// allocate, also with a default level, context values and a fanout (FR-021,
+// SC-006 of spec 013).
 func BenchmarkDisabled(b *testing.B) {
 	ctx := benchContext()
 	attrs := benchAttrs()
@@ -58,9 +58,9 @@ func BenchmarkDisabled(b *testing.B) {
 	}
 }
 
-// BenchmarkEnabled measures enabled records. composed must take at most twice
-// the time of bare-same-attrs, the output handler writing the same 7 attributes
-// (SC-008).
+// BenchmarkEnabled measures enabled records. value, the handler with redaction
+// and a context value, must take at most twice the time of bare-same-attrs, the
+// output handler writing the same 7 attributes (SC-007 of spec 013).
 func BenchmarkEnabled(b *testing.B) {
 	ctx := benchContext()
 	attrs := benchAttrs()
@@ -82,20 +82,6 @@ func BenchmarkEnabled(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
 			bare.LogAttrs(ctx, slog.LevelInfo, "http request", sameAttrs...)
-		}
-	})
-}
-
-// BenchmarkParallelSampling measures the sampler under contention, with most
-// records dropped.
-func BenchmarkParallelSampling(b *testing.B) {
-	h := must(slogx.NewSamplingHandler(slog.NewJSONHandler(io.Discard, nil), slogx.WithSampling(10, 100, time.Second)))
-	logger := slog.New(h)
-	ctx := context.Background()
-	b.ReportAllocs()
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			logger.LogAttrs(ctx, slog.LevelWarn, "db query failed")
 		}
 	})
 }

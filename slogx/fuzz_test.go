@@ -33,7 +33,7 @@ func FuzzRedact(f *testing.F) {
 			attr = slog.Group(fmt.Sprintf("g%d", i), attr)
 		}
 		var buf bytes.Buffer
-		h := must(slogx.NewRedactHandler(slog.NewJSONHandler(&buf, nil), slogx.WithRedactKeys(key)))
+		h := must(slogx.New(slog.NewJSONHandler(&buf, nil), slogx.WithRedactKeys(key)))
 		slog.New(h).Info("m", attr)
 		if strings.Contains(buf.String(), sentinel) {
 			t.Errorf("key %q (variant %q): sentinel leaked: %s", key, string(variant), buf.String())

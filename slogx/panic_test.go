@@ -22,10 +22,10 @@ func TestPanic_ContextFunc(t *testing.T) {
 	}
 }
 
-func TestNil_ContextHandler(t *testing.T) {
+func TestNil_ContextHandle(t *testing.T) {
 	var nilCtx context.Context
 	var buf bytes.Buffer
-	h := must(slogx.NewContextHandler(newJSON(&buf, nil), slogx.WithContextFunc(alwaysAttr)))
+	h := must(slogx.New(newJSON(&buf, nil), slogx.WithContextFunc(alwaysAttr)))
 	r := slog.NewRecord(time.Time{}, slog.LevelInfo, "m", 0)
 	for _, hh := range []slog.Handler{h, h.WithGroup("g")} {
 		if err := hh.Handle(nilCtx, r); err != nil {
@@ -35,7 +35,7 @@ func TestNil_ContextHandler(t *testing.T) {
 	if n := len(lines(t, &buf)); n != 2 {
 		t.Errorf("got %d records, want 2", n)
 	}
-	h2 := must(slogx.NewContextHandler(newJSON(&buf, nil)))
+	h2 := must(slogx.New(newJSON(&buf, nil)))
 	if err := h2.Handle(nilCtx, r); err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,380 @@
+## none / json-info / plain
+{"level":"INFO","msg":"plain","token":"s3cr3t","tenant":"t1","password":"hunter2","n":1}
+## none / json-info / background
+{"level":"INFO","msg":"background","a":1}
+## none / json-info / nil context
+{"level":"WARN","msg":"nil context"}
+## none / json-info / levels
+{"level":"INFO","msg":"level","token":"s3cr3t","tenant":"t1"}
+{"level":"WARN","msg":"level","token":"s3cr3t","tenant":"t1"}
+{"level":"ERROR","msg":"level","token":"s3cr3t","tenant":"t1"}
+## none / json-info / context level debug
+{"level":"DEBUG","msg":"debug for one request","token":"s3cr3t","tenant":"t1"}
+## none / json-info / context level error
+{"level":"ERROR","msg":"kept","token":"s3cr3t","tenant":"t1"}
+## none / json-info / groups
+{"level":"INFO","msg":"grouped","token":"s3cr3t","tenant":"t1","db":{"table":"orders","Authorization":"x","q":{"rows":3}}}
+## none / json-info / logger attrs
+{"level":"INFO","msg":"logger","service":"api","cookie":"c","tenant":"logger","token":"s3cr3t"}
+## none / json-info / duplicates
+{"level":"INFO","msg":"dup","token":"s3cr3t","request_id":"own","tenant":"own"}
+## none / json-info / sealed group
+{"level":"INFO","msg":"sealed","token":"s3cr3t","tenant":"t1","Token":{"a":1}}
+## none / json-info / valuers
+{"level":"INFO","msg":"valuers","token":"s3cr3t","tenant":"t1","user":{"name":"bob","token":"t0k"},"pin":"[REDACTED]"}
+## none / json-info / nested
+{"level":"INFO","msg":"nested","token":"s3cr3t","tenant":"t1","a":{"b":{"password":"p","inline":1}}}
+## none / json-info / error
+{"level":"ERROR","msg":"failed","token":"s3cr3t","tenant":"t1","err":"token=abc"}
+## none / json-warn / plain
+## none / json-warn / background
+## none / json-warn / nil context
+{"level":"WARN","msg":"nil context"}
+## none / json-warn / levels
+{"level":"WARN","msg":"level","token":"s3cr3t","tenant":"t1"}
+{"level":"ERROR","msg":"level","token":"s3cr3t","tenant":"t1"}
+## none / json-warn / context level debug
+{"level":"DEBUG","msg":"debug for one request","token":"s3cr3t","tenant":"t1"}
+## none / json-warn / context level error
+{"level":"ERROR","msg":"kept","token":"s3cr3t","tenant":"t1"}
+## none / json-warn / groups
+## none / json-warn / logger attrs
+## none / json-warn / duplicates
+## none / json-warn / sealed group
+## none / json-warn / valuers
+## none / json-warn / nested
+## none / json-warn / error
+{"level":"ERROR","msg":"failed","token":"s3cr3t","tenant":"t1","err":"token=abc"}
+## none / text-debug / plain
+level=INFO msg=plain token=s3cr3t tenant=t1 password=hunter2 n=1
+## none / text-debug / background
+level=INFO msg=background a=1
+## none / text-debug / nil context
+level=WARN msg="nil context"
+## none / text-debug / levels
+level=DEBUG msg=level token=s3cr3t tenant=t1
+level=INFO msg=level token=s3cr3t tenant=t1
+level=WARN msg=level token=s3cr3t tenant=t1
+level=ERROR msg=level token=s3cr3t tenant=t1
+## none / text-debug / context level debug
+level=DEBUG msg="debug for one request" token=s3cr3t tenant=t1
+## none / text-debug / context level error
+level=ERROR msg=kept token=s3cr3t tenant=t1
+## none / text-debug / groups
+level=INFO msg=grouped token=s3cr3t tenant=t1 db.table=orders db.Authorization=x db.q.rows=3
+## none / text-debug / logger attrs
+level=INFO msg=logger service=api cookie=c tenant=logger token=s3cr3t
+## none / text-debug / duplicates
+level=INFO msg=dup token=s3cr3t request_id=own tenant=own
+## none / text-debug / sealed group
+level=INFO msg=sealed token=s3cr3t tenant=t1 Token.a=1
+## none / text-debug / valuers
+level=INFO msg=valuers token=s3cr3t tenant=t1 user.name=bob user.token=t0k pin=[REDACTED]
+## none / text-debug / nested
+level=INFO msg=nested token=s3cr3t tenant=t1 a.b.password=p a.b.inline=1
+## none / text-debug / error
+level=ERROR msg=failed token=s3cr3t tenant=t1 err="token=abc"
+## context / json-info / plain
+{"level":"INFO","msg":"plain","token":"s3cr3t","tenant":"t1","request_id":"abc","password":"hunter2","n":1}
+## context / json-info / background
+{"level":"INFO","msg":"background","a":1}
+## context / json-info / nil context
+{"level":"WARN","msg":"nil context"}
+## context / json-info / levels
+{"level":"INFO","msg":"level","token":"s3cr3t","tenant":"t1","request_id":"abc"}
+{"level":"WARN","msg":"level","token":"s3cr3t","tenant":"t1","request_id":"abc"}
+{"level":"ERROR","msg":"level","token":"s3cr3t","tenant":"t1","request_id":"abc"}
+## context / json-info / context level debug
+{"level":"DEBUG","msg":"debug for one request","token":"s3cr3t","tenant":"t1","request_id":"abc"}
+## context / json-info / context level error
+{"level":"ERROR","msg":"kept","token":"s3cr3t","tenant":"t1","request_id":"abc"}
+## context / json-info / groups
+{"level":"INFO","msg":"grouped","token":"s3cr3t","tenant":"t1","request_id":"abc","db":{"table":"orders","Authorization":"x","q":{"rows":3}}}
+## context / json-info / logger attrs
+{"level":"INFO","msg":"logger","service":"api","cookie":"c","tenant":"logger","token":"s3cr3t","request_id":"abc"}
+## context / json-info / duplicates
+{"level":"INFO","msg":"dup","token":"s3cr3t","request_id":"own","tenant":"own"}
+## context / json-info / sealed group
+{"level":"INFO","msg":"sealed","token":"s3cr3t","tenant":"t1","request_id":"abc","Token":{"a":1}}
+## context / json-info / valuers
+{"level":"INFO","msg":"valuers","token":"s3cr3t","tenant":"t1","request_id":"abc","user":{"name":"bob","token":"t0k"},"pin":"[REDACTED]"}
+## context / json-info / nested
+{"level":"INFO","msg":"nested","token":"s3cr3t","tenant":"t1","request_id":"abc","a":{"b":{"password":"p","inline":1}}}
+## context / json-info / error
+{"level":"ERROR","msg":"failed","token":"s3cr3t","tenant":"t1","request_id":"abc","err":"token=abc"}
+## context / json-warn / plain
+## context / json-warn / background
+## context / json-warn / nil context
+{"level":"WARN","msg":"nil context"}
+## context / json-warn / levels
+{"level":"WARN","msg":"level","token":"s3cr3t","tenant":"t1","request_id":"abc"}
+{"level":"ERROR","msg":"level","token":"s3cr3t","tenant":"t1","request_id":"abc"}
+## context / json-warn / context level debug
+{"level":"DEBUG","msg":"debug for one request","token":"s3cr3t","tenant":"t1","request_id":"abc"}
+## context / json-warn / context level error
+{"level":"ERROR","msg":"kept","token":"s3cr3t","tenant":"t1","request_id":"abc"}
+## context / json-warn / groups
+## context / json-warn / logger attrs
+## context / json-warn / duplicates
+## context / json-warn / sealed group
+## context / json-warn / valuers
+## context / json-warn / nested
+## context / json-warn / error
+{"level":"ERROR","msg":"failed","token":"s3cr3t","tenant":"t1","request_id":"abc","err":"token=abc"}
+## context / text-debug / plain
+level=INFO msg=plain token=s3cr3t tenant=t1 request_id=abc password=hunter2 n=1
+## context / text-debug / background
+level=INFO msg=background a=1
+## context / text-debug / nil context
+level=WARN msg="nil context"
+## context / text-debug / levels
+level=DEBUG msg=level token=s3cr3t tenant=t1 request_id=abc
+level=INFO msg=level token=s3cr3t tenant=t1 request_id=abc
+level=WARN msg=level token=s3cr3t tenant=t1 request_id=abc
+level=ERROR msg=level token=s3cr3t tenant=t1 request_id=abc
+## context / text-debug / context level debug
+level=DEBUG msg="debug for one request" token=s3cr3t tenant=t1 request_id=abc
+## context / text-debug / context level error
+level=ERROR msg=kept token=s3cr3t tenant=t1 request_id=abc
+## context / text-debug / groups
+level=INFO msg=grouped token=s3cr3t tenant=t1 request_id=abc db.table=orders db.Authorization=x db.q.rows=3
+## context / text-debug / logger attrs
+level=INFO msg=logger service=api cookie=c tenant=logger token=s3cr3t request_id=abc
+## context / text-debug / duplicates
+level=INFO msg=dup token=s3cr3t request_id=own tenant=own
+## context / text-debug / sealed group
+level=INFO msg=sealed token=s3cr3t tenant=t1 request_id=abc Token.a=1
+## context / text-debug / valuers
+level=INFO msg=valuers token=s3cr3t tenant=t1 request_id=abc user.name=bob user.token=t0k pin=[REDACTED]
+## context / text-debug / nested
+level=INFO msg=nested token=s3cr3t tenant=t1 request_id=abc a.b.password=p a.b.inline=1
+## context / text-debug / error
+level=ERROR msg=failed token=s3cr3t tenant=t1 request_id=abc err="token=abc"
+## redact / json-info / plain
+{"level":"INFO","msg":"plain","token":"[REDACTED]","tenant":"t1","password":"[REDACTED]","n":1}
+## redact / json-info / background
+{"level":"INFO","msg":"background","a":1}
+## redact / json-info / nil context
+{"level":"WARN","msg":"nil context"}
+## redact / json-info / levels
+{"level":"INFO","msg":"level","token":"[REDACTED]","tenant":"t1"}
+{"level":"WARN","msg":"level","token":"[REDACTED]","tenant":"t1"}
+{"level":"ERROR","msg":"level","token":"[REDACTED]","tenant":"t1"}
+## redact / json-info / context level debug
+{"level":"DEBUG","msg":"debug for one request","token":"[REDACTED]","tenant":"t1"}
+## redact / json-info / context level error
+{"level":"ERROR","msg":"kept","token":"[REDACTED]","tenant":"t1"}
+## redact / json-info / groups
+{"level":"INFO","msg":"grouped","token":"[REDACTED]","tenant":"t1","db":{"table":"orders","Authorization":"[REDACTED]","q":{"rows":3}}}
+## redact / json-info / logger attrs
+{"level":"INFO","msg":"logger","service":"api","cookie":"[REDACTED]","tenant":"logger","token":"[REDACTED]"}
+## redact / json-info / duplicates
+{"level":"INFO","msg":"dup","token":"[REDACTED]","request_id":"own","tenant":"own"}
+## redact / json-info / sealed group
+{"level":"INFO","msg":"sealed","token":"[REDACTED]","tenant":"t1","Token":"[REDACTED]"}
+## redact / json-info / valuers
+{"level":"INFO","msg":"valuers","token":"[REDACTED]","tenant":"t1","user":{"name":"bob","token":"[REDACTED]"},"pin":"[REDACTED]"}
+## redact / json-info / nested
+{"level":"INFO","msg":"nested","token":"[REDACTED]","tenant":"t1","a":{"b":{"password":"[REDACTED]","inline":1}}}
+## redact / json-info / error
+{"level":"ERROR","msg":"failed","token":"[REDACTED]","tenant":"t1","err":"token=abc"}
+## redact / json-warn / plain
+## redact / json-warn / background
+## redact / json-warn / nil context
+{"level":"WARN","msg":"nil context"}
+## redact / json-warn / levels
+{"level":"WARN","msg":"level","token":"[REDACTED]","tenant":"t1"}
+{"level":"ERROR","msg":"level","token":"[REDACTED]","tenant":"t1"}
+## redact / json-warn / context level debug
+{"level":"DEBUG","msg":"debug for one request","token":"[REDACTED]","tenant":"t1"}
+## redact / json-warn / context level error
+{"level":"ERROR","msg":"kept","token":"[REDACTED]","tenant":"t1"}
+## redact / json-warn / groups
+## redact / json-warn / logger attrs
+## redact / json-warn / duplicates
+## redact / json-warn / sealed group
+## redact / json-warn / valuers
+## redact / json-warn / nested
+## redact / json-warn / error
+{"level":"ERROR","msg":"failed","token":"[REDACTED]","tenant":"t1","err":"token=abc"}
+## redact / text-debug / plain
+level=INFO msg=plain token=[REDACTED] tenant=t1 password=[REDACTED] n=1
+## redact / text-debug / background
+level=INFO msg=background a=1
+## redact / text-debug / nil context
+level=WARN msg="nil context"
+## redact / text-debug / levels
+level=DEBUG msg=level token=[REDACTED] tenant=t1
+level=INFO msg=level token=[REDACTED] tenant=t1
+level=WARN msg=level token=[REDACTED] tenant=t1
+level=ERROR msg=level token=[REDACTED] tenant=t1
+## redact / text-debug / context level debug
+level=DEBUG msg="debug for one request" token=[REDACTED] tenant=t1
+## redact / text-debug / context level error
+level=ERROR msg=kept token=[REDACTED] tenant=t1
+## redact / text-debug / groups
+level=INFO msg=grouped token=[REDACTED] tenant=t1 db.table=orders db.Authorization=[REDACTED] db.q.rows=3
+## redact / text-debug / logger attrs
+level=INFO msg=logger service=api cookie=[REDACTED] tenant=logger token=[REDACTED]
+## redact / text-debug / duplicates
+level=INFO msg=dup token=[REDACTED] request_id=own tenant=own
+## redact / text-debug / sealed group
+level=INFO msg=sealed token=[REDACTED] tenant=t1 Token=[REDACTED]
+## redact / text-debug / valuers
+level=INFO msg=valuers token=[REDACTED] tenant=t1 user.name=bob user.token=[REDACTED] pin=[REDACTED]
+## redact / text-debug / nested
+level=INFO msg=nested token=[REDACTED] tenant=t1 a.b.password=[REDACTED] a.b.inline=1
+## redact / text-debug / error
+level=ERROR msg=failed token=[REDACTED] tenant=t1 err="token=abc"
+## both / json-info / plain
+{"level":"INFO","msg":"plain","token":"[REDACTED]","tenant":"t1","request_id":"abc","password":"[REDACTED]","n":1}
+## both / json-info / background
+{"level":"INFO","msg":"background","a":1}
+## both / json-info / nil context
+{"level":"WARN","msg":"nil context"}
+## both / json-info / levels
+{"level":"INFO","msg":"level","token":"[REDACTED]","tenant":"t1","request_id":"abc"}
+{"level":"WARN","msg":"level","token":"[REDACTED]","tenant":"t1","request_id":"abc"}
+{"level":"ERROR","msg":"level","token":"[REDACTED]","tenant":"t1","request_id":"abc"}
+## both / json-info / context level debug
+{"level":"DEBUG","msg":"debug for one request","token":"[REDACTED]","tenant":"t1","request_id":"abc"}
+## both / json-info / context level error
+{"level":"ERROR","msg":"kept","token":"[REDACTED]","tenant":"t1","request_id":"abc"}
+## both / json-info / groups
+{"level":"INFO","msg":"grouped","token":"[REDACTED]","tenant":"t1","request_id":"abc","db":{"table":"orders","Authorization":"[REDACTED]","q":{"rows":3}}}
+## both / json-info / logger attrs
+{"level":"INFO","msg":"logger","service":"api","cookie":"[REDACTED]","tenant":"logger","token":"[REDACTED]","request_id":"abc"}
+## both / json-info / duplicates
+{"level":"INFO","msg":"dup","token":"[REDACTED]","request_id":"own","tenant":"own"}
+## both / json-info / sealed group
+{"level":"INFO","msg":"sealed","token":"[REDACTED]","tenant":"t1","request_id":"abc","Token":"[REDACTED]"}
+## both / json-info / valuers
+{"level":"INFO","msg":"valuers","token":"[REDACTED]","tenant":"t1","request_id":"abc","user":{"name":"bob","token":"[REDACTED]"},"pin":"[REDACTED]"}
+## both / json-info / nested
+{"level":"INFO","msg":"nested","token":"[REDACTED]","tenant":"t1","request_id":"abc","a":{"b":{"password":"[REDACTED]","inline":1}}}
+## both / json-info / error
+{"level":"ERROR","msg":"failed","token":"[REDACTED]","tenant":"t1","request_id":"abc","err":"token=abc"}
+## both / json-warn / plain
+## both / json-warn / background
+## both / json-warn / nil context
+{"level":"WARN","msg":"nil context"}
+## both / json-warn / levels
+{"level":"WARN","msg":"level","token":"[REDACTED]","tenant":"t1","request_id":"abc"}
+{"level":"ERROR","msg":"level","token":"[REDACTED]","tenant":"t1","request_id":"abc"}
+## both / json-warn / context level debug
+{"level":"DEBUG","msg":"debug for one request","token":"[REDACTED]","tenant":"t1","request_id":"abc"}
+## both / json-warn / context level error
+{"level":"ERROR","msg":"kept","token":"[REDACTED]","tenant":"t1","request_id":"abc"}
+## both / json-warn / groups
+## both / json-warn / logger attrs
+## both / json-warn / duplicates
+## both / json-warn / sealed group
+## both / json-warn / valuers
+## both / json-warn / nested
+## both / json-warn / error
+{"level":"ERROR","msg":"failed","token":"[REDACTED]","tenant":"t1","request_id":"abc","err":"token=abc"}
+## both / text-debug / plain
+level=INFO msg=plain token=[REDACTED] tenant=t1 request_id=abc password=[REDACTED] n=1
+## both / text-debug / background
+level=INFO msg=background a=1
+## both / text-debug / nil context
+level=WARN msg="nil context"
+## both / text-debug / levels
+level=DEBUG msg=level token=[REDACTED] tenant=t1 request_id=abc
+level=INFO msg=level token=[REDACTED] tenant=t1 request_id=abc
+level=WARN msg=level token=[REDACTED] tenant=t1 request_id=abc
+level=ERROR msg=level token=[REDACTED] tenant=t1 request_id=abc
+## both / text-debug / context level debug
+level=DEBUG msg="debug for one request" token=[REDACTED] tenant=t1 request_id=abc
+## both / text-debug / context level error
+level=ERROR msg=kept token=[REDACTED] tenant=t1 request_id=abc
+## both / text-debug / groups
+level=INFO msg=grouped token=[REDACTED] tenant=t1 request_id=abc db.table=orders db.Authorization=[REDACTED] db.q.rows=3
+## both / text-debug / logger attrs
+level=INFO msg=logger service=api cookie=[REDACTED] tenant=logger token=[REDACTED] request_id=abc
+## both / text-debug / duplicates
+level=INFO msg=dup token=[REDACTED] request_id=own tenant=own
+## both / text-debug / sealed group
+level=INFO msg=sealed token=[REDACTED] tenant=t1 request_id=abc Token=[REDACTED]
+## both / text-debug / valuers
+level=INFO msg=valuers token=[REDACTED] tenant=t1 request_id=abc user.name=bob user.token=[REDACTED] pin=[REDACTED]
+## both / text-debug / nested
+level=INFO msg=nested token=[REDACTED] tenant=t1 request_id=abc a.b.password=[REDACTED] a.b.inline=1
+## both / text-debug / error
+level=ERROR msg=failed token=[REDACTED] tenant=t1 request_id=abc err="token=abc"
+## many / json-info / plain
+{"level":"INFO","msg":"plain","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract","password":"hunter2","n":1}
+## many / json-info / background
+{"level":"INFO","msg":"background","tenant":"from-func","request_id":"from-func","inl":1,"!CONTEXTFUNC":"panic: extract","a":1}
+## many / json-info / nil context
+{"level":"WARN","msg":"nil context","tenant":"from-func","request_id":"from-func","inl":1,"!CONTEXTFUNC":"panic: extract"}
+## many / json-info / levels
+{"level":"INFO","msg":"level","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract"}
+{"level":"WARN","msg":"level","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract"}
+{"level":"ERROR","msg":"level","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract"}
+## many / json-info / context level debug
+{"level":"DEBUG","msg":"debug for one request","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract"}
+## many / json-info / context level error
+{"level":"ERROR","msg":"kept","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract"}
+## many / json-info / groups
+{"level":"INFO","msg":"grouped","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract","db":{"table":"orders","Authorization":"x","q":{"rows":3}}}
+## many / json-info / logger attrs
+{"level":"INFO","msg":"logger","service":"api","cookie":"[REDACTED]","tenant":"logger","token":"[REDACTED]","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract"}
+## many / json-info / duplicates
+{"level":"INFO","msg":"dup","token":"[REDACTED]","inl":1,"!CONTEXTFUNC":"panic: extract","request_id":"own","tenant":"own"}
+## many / json-info / sealed group
+{"level":"INFO","msg":"sealed","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract","Token":"[REDACTED]"}
+## many / json-info / valuers
+{"level":"INFO","msg":"valuers","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract","user":{"name":"bob","token":"[REDACTED]"},"pin":"[REDACTED]"}
+## many / json-info / nested
+{"level":"INFO","msg":"nested","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract","a":{"b":{"password":"p","inline":1}}}
+## many / json-info / error
+{"level":"ERROR","msg":"failed","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract","err":"token=abc"}
+## many / json-warn / plain
+## many / json-warn / background
+## many / json-warn / nil context
+{"level":"WARN","msg":"nil context","tenant":"from-func","request_id":"from-func","inl":1,"!CONTEXTFUNC":"panic: extract"}
+## many / json-warn / levels
+{"level":"WARN","msg":"level","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract"}
+{"level":"ERROR","msg":"level","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract"}
+## many / json-warn / context level debug
+{"level":"DEBUG","msg":"debug for one request","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract"}
+## many / json-warn / context level error
+{"level":"ERROR","msg":"kept","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract"}
+## many / json-warn / groups
+## many / json-warn / logger attrs
+## many / json-warn / duplicates
+## many / json-warn / sealed group
+## many / json-warn / valuers
+## many / json-warn / nested
+## many / json-warn / error
+{"level":"ERROR","msg":"failed","token":"[REDACTED]","tenant":"t1","request_id":"abc","inl":1,"!CONTEXTFUNC":"panic: extract","err":"token=abc"}
+## many / text-debug / plain
+level=INFO msg=plain token=[REDACTED] tenant=t1 request_id=abc inl=1 !CONTEXTFUNC="panic: extract" password=hunter2 n=1
+## many / text-debug / background
+level=INFO msg=background tenant=from-func request_id=from-func inl=1 !CONTEXTFUNC="panic: extract" a=1
+## many / text-debug / nil context
+level=WARN msg="nil context" tenant=from-func request_id=from-func inl=1 !CONTEXTFUNC="panic: extract"
+## many / text-debug / levels
+level=DEBUG msg=level token=[REDACTED] tenant=t1 request_id=abc inl=1 !CONTEXTFUNC="panic: extract"
+level=INFO msg=level token=[REDACTED] tenant=t1 request_id=abc inl=1 !CONTEXTFUNC="panic: extract"
+level=WARN msg=level token=[REDACTED] tenant=t1 request_id=abc inl=1 !CONTEXTFUNC="panic: extract"
+level=ERROR msg=level token=[REDACTED] tenant=t1 request_id=abc inl=1 !CONTEXTFUNC="panic: extract"
+## many / text-debug / context level debug
+level=DEBUG msg="debug for one request" token=[REDACTED] tenant=t1 request_id=abc inl=1 !CONTEXTFUNC="panic: extract"
+## many / text-debug / context level error
+level=ERROR msg=kept token=[REDACTED] tenant=t1 request_id=abc inl=1 !CONTEXTFUNC="panic: extract"
+## many / text-debug / groups
+level=INFO msg=grouped token=[REDACTED] tenant=t1 request_id=abc inl=1 !CONTEXTFUNC="panic: extract" db.table=orders db.Authorization=x db.q.rows=3
+## many / text-debug / logger attrs
+level=INFO msg=logger service=api cookie=[REDACTED] tenant=logger token=[REDACTED] request_id=abc inl=1 !CONTEXTFUNC="panic: extract"
+## many / text-debug / duplicates
+level=INFO msg=dup token=[REDACTED] inl=1 !CONTEXTFUNC="panic: extract" request_id=own tenant=own
+## many / text-debug / sealed group
+level=INFO msg=sealed token=[REDACTED] tenant=t1 request_id=abc inl=1 !CONTEXTFUNC="panic: extract" Token=[REDACTED]
+## many / text-debug / valuers
+level=INFO msg=valuers token=[REDACTED] tenant=t1 request_id=abc inl=1 !CONTEXTFUNC="panic: extract" user.name=bob user.token=[REDACTED] pin=[REDACTED]
+## many / text-debug / nested
+level=INFO msg=nested token=[REDACTED] tenant=t1 request_id=abc inl=1 !CONTEXTFUNC="panic: extract" a.b.password=p a.b.inline=1
+## many / text-debug / error
+level=ERROR msg=failed token=[REDACTED] tenant=t1 request_id=abc inl=1 !CONTEXTFUNC="panic: extract" err="token=abc"
