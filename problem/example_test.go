@@ -37,7 +37,7 @@ func ExampleRead() {
 		fmt.Println(err)
 		return
 	}
-	fmt.Println(p.Type()) // resolved against the request URL
+	fmt.Println(p.Type()) // resolved against the URL the request sent
 	if _, ok := outOfCredit.Match(p); ok {
 		v, _ := balance.Lookup(p)
 		fmt.Println("out of credit, balance", v)

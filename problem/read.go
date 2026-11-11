@@ -24,11 +24,13 @@ const maxDocumentSize = 1 << 20
 // close the body.
 //
 // The members are read as [Parse] reads them. In addition, relative "type" and
-// "instance" members are resolved against the URL of resp.Request, the last
-// request of any redirect chain. [Type.Match] resolves a relative declared type
-// against the same URL, so a type declared with the URI that the server writes
-// matches the problem. The status code of resp is not consulted: the caller can
-// compare it with [Error.Status].
+// "instance" members are resolved against the URL that resp.Request sent: the
+// URL of the last request of any redirect chain, without its userinfo and its
+// fragment, and with its query. Credentials that the client keeps in the
+// request URL therefore never reach the problem. [Type.Match] resolves a
+// relative declared type against the same URL, so a type declared with the URI
+// that the server writes matches the problem. The status code of resp is not
+// consulted: the caller can compare it with [Error.Status].
 func Read(resp *http.Response) (*Error, error) {
 	if resp == nil {
 		return nil, fmt.Errorf("%w: nil response", ErrNotProblem)
@@ -49,8 +51,12 @@ func Read(resp *http.Response) (*Error, error) {
 		return nil, err
 	}
 	if resp.Request != nil && resp.Request.URL != nil {
-		// A copy: the caller may change its request after Read returns.
+		// The URL the request sent (RFC 9110 §4.2.4 and §7.1): a copy of the
+		// request URL without its userinfo and its fragment. A copy, because the
+		// caller may change its request after Read returns.
 		base := *resp.Request.URL
+		base.User = nil
+		base.Fragment, base.RawFragment = "", ""
 		e.base = &base
 		e.typ = resolve(e.base, e.typ)
 		e.instance = resolve(e.base, e.instance)

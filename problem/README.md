@@ -252,12 +252,12 @@ if resp.StatusCode >= 400 {
 
 `Read` follows the RFC's rules for consumers: members with the wrong JSON type are ignored, a
 missing type is `about:blank`, unknown extensions are kept, and relative URIs are resolved
-against the request URL. It reads at most 1 MiB. `p.Errors()` returns the validation errors of
-a problem, when it has some.
+against the URL that the request sent: the request URL without its credentials and its fragment.
+It reads at most 1 MiB. `p.Errors()` returns the validation errors of a problem, when it has some.
 
 `OutOfCredit` can be the declaration that the service itself uses, even when its type URI is
 relative, such as `/probs/out-of-credit`. `Match` resolves a relative type URI against the same
-request URL as `Read`, so it matches the problems of that path on the server that answered.
+URL as `Read`, so it matches the problems of that path on the server that answered.
 Declare an absolute URI to match the problems of one host only.
 
 ## Using it with the middleware module

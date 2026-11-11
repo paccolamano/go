@@ -42,8 +42,9 @@ type Error struct {
 	instance string
 	ext      map[string]json.RawMessage
 	cause    error
-	// base is the URL that Read resolved typ and instance against, or nil. It
-	// is a copy that nothing modifies, and Write never writes it.
+	// base is the URL that Read resolved typ and instance against, or nil: the
+	// URL that the request sent, without its userinfo and its fragment. It is a
+	// copy that nothing modifies, and Write never writes it.
 	base *url.URL
 	// invalid is the first failure recorded while the occurrence was built.
 	// Write reports it and sends the generic server error instead.

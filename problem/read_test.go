@@ -2,9 +2,11 @@ package problem_test
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -132,6 +134,207 @@ func TestRead_Resolve(t *testing.T) {
 			t.Errorf("Type() = %q, Instance() = %q; want them unresolved", p.Type(), p.Instance())
 		}
 	})
+}
+
+// TestRead_RequestURL resolves the members of the table of FR-006 (spec 015)
+// against a request URL with credentials, a query and a fragment, and the edge
+// cases of other request URLs.
+func TestRead_RequestURL(t *testing.T) {
+	cred := withCredentials(t, "http://api.example.com/v1/accounts/42?api_key=XYZ")
+	tests := []struct {
+		name          string
+		u             *url.URL
+		member, value string
+		want          string
+	}{
+		// The rows of FR-006.
+		{"type, absolute path", cred, "type", "/probs/out-of-credit", "http://api.example.com/probs/out-of-credit"},
+		{"instance, fragment", cred, "instance", "#msg-1", "http://api.example.com/v1/accounts/42?api_key=XYZ#msg-1"},
+		{"instance, empty fragment", cred, "instance", "#", "http://api.example.com/v1/accounts/42?api_key=XYZ"},
+		{"instance, query", cred, "instance", "?page=2", "http://api.example.com/v1/accounts/42?page=2"},
+		{"instance, relative path", cred, "instance", "msgs/1", "http://api.example.com/v1/accounts/msgs/1"},
+		{"type, network path", cred, "type", "//cdn.example.com/probs/x", "http://cdn.example.com/probs/x"},
+		{"type, absolute", cred, "type", "https://other.example.com/probs/x", "https://other.example.com/probs/x"},
+		{"no type", cred, "type", "", "about:blank"},
+		// Edge cases.
+		{
+			"user name only",
+			&url.URL{Scheme: "http", User: url.User("svc"), Host: "api.example.com", Path: "/v1"},
+			"type", "/probs/out-of-credit", "http://api.example.com/probs/out-of-credit",
+		},
+		{
+			"empty userinfo", // http://@api.example.com/v1
+			&url.URL{Scheme: "http", User: url.User(""), Host: "api.example.com", Path: "/v1"},
+			"type", "/probs/out-of-credit", "http://api.example.com/probs/out-of-credit",
+		},
+		{
+			"not hierarchical", // as in problem/v0.2.1
+			&url.URL{Scheme: "mailto", Opaque: "a@b"},
+			"type", "/probs/x", "mailto:///probs/x",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := `{}`
+			if tt.value != "" {
+				doc = fmt.Sprintf(`{%q:%q}`, tt.member, tt.value)
+			}
+			p := readFrom(t, tt.u, doc)
+			got := p.Type()
+			if tt.member == "instance" {
+				got = p.Instance()
+			}
+			if got != tt.want {
+				t.Errorf("%s %q from %s: got %q, want %q", tt.member, tt.value, tt.u.Redacted(), got, tt.want)
+			}
+		})
+	}
+
+	t.Run("caller's URL", func(t *testing.T) {
+		p := readFrom(t, cred, `{"type":"/probs/out-of-credit"}`)
+		if want := "http://api.example.com/probs/out-of-credit"; p.Type() != want {
+			t.Errorf("Type() = %q, want %q", p.Type(), want)
+		}
+		if cred.User == nil || cred.Fragment != "frag" {
+			t.Errorf("request URL = %s, want it with its userinfo and the fragment frag", cred.Redacted())
+		}
+	})
+}
+
+// TestRead_Credentials reads problems through http.Client, from request URLs
+// that hold credentials and a fragment, and checks that neither reaches the
+// problem, its message or the document written again from it (FR-014 of spec
+// 015).
+func TestRead_Credentials(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/old" {
+			http.Redirect(w, r, "/v2/accounts/42?page=2#moved", http.StatusFound)
+			return
+		}
+		// http.Client forwards Test-Doc across the redirect, to the same host.
+		w.Header().Set("Content-Type", problem.MediaType)
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = io.WriteString(w, r.Header.Get("Test-Doc"))
+	}))
+	defer srv.Close()
+
+	userOnly, err := url.Parse(srv.URL + "/v1/accounts/42")
+	if err != nil {
+		t.Fatalf("url.Parse: %v", err)
+	}
+	userOnly.User = url.User("svc")
+	targets := []struct {
+		name     string
+		u        *url.URL
+		sent     string // the URL the request sent
+		fragment string // the fragment that the client's last request URL still holds
+	}{
+		{
+			"user and password, query and fragment", withCredentials(t, srv.URL+"/v1/accounts/42?api_key=XYZ"),
+			srv.URL + "/v1/accounts/42?api_key=XYZ", "frag",
+		},
+		{"user name only", userOnly, srv.URL + "/v1/accounts/42", ""},
+		{"relative redirect", withCredentials(t, srv.URL+"/old"), srv.URL + "/v2/accounts/42?page=2", "moved"},
+	}
+	// The members of the table of FR-006, each in a document that Write can send.
+	docs := []struct{ name, typ, instance string }{
+		{"instance #msg-1", "/probs/out-of-credit", "#msg-1"},
+		{"instance #", "/probs/out-of-credit", "#"},
+		{"instance ?page=2", "/probs/out-of-credit", "?page=2"},
+		{"instance msgs/1", "/probs/out-of-credit", "msgs/1"},
+		{"network-path type", "//cdn.example.com/probs/x", ""},
+		{"absolute type", "https://other.example.com/probs/x", ""},
+		{"no type", "", ""},
+	}
+	markers := []string{"svc", "s3cret", "frag", "moved"}
+
+	// get sends a GET of u that asks the server for doc, and returns the problem
+	// read from the response and the URL of the last request.
+	get := func(t *testing.T, u *url.URL, doc string) (*problem.Error, *url.URL) {
+		t.Helper()
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, u.String(), nil)
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		req.Header.Set("Test-Doc", doc)
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatalf("Do: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Fatalf("status = %d, want 403", resp.StatusCode)
+		}
+		p, err := problem.Read(resp)
+		if err != nil {
+			t.Fatalf("Read: %v", err)
+		}
+		return p, resp.Request.URL
+	}
+
+	for _, tt := range targets {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, d := range docs {
+				t.Run(d.name, func(t *testing.T) {
+					doc := `{"status":403`
+					if d.typ != "" {
+						doc += fmt.Sprintf(`,"type":%q`, d.typ)
+					}
+					if d.instance != "" {
+						doc += fmt.Sprintf(`,"instance":%q`, d.instance)
+					}
+					doc += "}"
+					p, last := get(t, tt.u, doc)
+
+					// Nothing of the request URL beyond the URL it sent.
+					rec := httptest.NewRecorder()
+					if err := problem.Write(rec, newRequest(t, http.MethodGet, "/"), p); err != nil {
+						t.Fatalf("Write: %v", err)
+					}
+					for _, v := range []struct{ what, s string }{
+						{"Type()", p.Type()},
+						{"Instance()", p.Instance()},
+						{"Error()", p.Error()},
+						{"the written document", rec.Body.String()},
+					} {
+						for _, m := range markers {
+							if strings.Contains(v.s, m) {
+								t.Errorf("%s = %q contains %q", v.what, v.s, m)
+							}
+						}
+					}
+
+					switch d.instance {
+					case "#msg-1":
+						if want := tt.sent + "#msg-1"; p.Instance() != want {
+							t.Errorf("Instance() = %q, want %q", p.Instance(), want)
+						}
+					case "#":
+						if p.Instance() != tt.sent {
+							t.Errorf("Instance() = %q, want %q", p.Instance(), tt.sent)
+						}
+					}
+					if d.typ == "/probs/out-of-credit" {
+						if want := srv.URL + "/probs/out-of-credit"; p.Type() != want {
+							t.Errorf("Type() = %q, want %q", p.Type(), want)
+						}
+						if got, ok := sharedCredit.Match(p); !ok || got != p {
+							t.Errorf("Match = %v, %v for the type %q; want the problem, true", got, ok, p.Type())
+						}
+						if _, ok := sharedCredit.Match(p.With(problem.WithDetail("derived"))); !ok {
+							t.Errorf("no match for the derived problem of type %q", p.Type())
+						}
+					}
+
+					// The caller's request is not modified (FR-005).
+					if last.User == nil || last.Fragment != tt.fragment {
+						t.Errorf("last request URL = %s, want it with its userinfo and the fragment %q",
+							last.Redacted(), tt.fragment)
+					}
+				})
+			}
+		})
+	}
 }
 
 func TestRead_UnknownExtensions(t *testing.T) {
