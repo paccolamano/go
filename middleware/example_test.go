@@ -2,11 +2,15 @@ package middleware_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 
 	"github.com/paccolamano/go/middleware"
+	"github.com/paccolamano/go/middleware/bodylimit"
+	"github.com/paccolamano/go/middleware/cors"
+	"github.com/paccolamano/go/middleware/requestid"
 )
 
 // tag returns a middleware that prints its name before and after the next
@@ -70,4 +74,53 @@ func ExampleChain_Then() {
 	// enter logging
 	// handler
 	// leave logging
+}
+
+func ExampleChain_Use() {
+	base := middleware.New().
+		Use(requestid.New()).
+		Append(tag("logging"))
+	api := base.
+		Use(cors.New([]string{"https://app.example.com"})).
+		Use(bodylimit.New(1 << 20))
+	if err := api.Err(); err != nil { // covers base too
+		fmt.Println(err)
+		return
+	}
+	serveOnce(api.Then(hello()))
+	// Output:
+	// enter logging
+	// handler
+	// leave logging
+}
+
+func ExampleChain_Err() {
+	base := middleware.New().Use(requestid.New())
+	api := base.
+		Use(cors.New([]string{"app.example.com"})). // the scheme is missing
+		Use(bodylimit.New(0))
+	fmt.Println(base.Err())
+	fmt.Println(api.Err())
+	fmt.Println(errors.Is(api.Err(), middleware.ErrInvalidConfig))
+	// Output:
+	// <nil>
+	// middleware: invalid configuration: cors: origins: "app.example.com" is not an origin (scheme://host[:port])
+	// middleware: invalid configuration: bodylimit: maxBytes: must be greater than 0
+	// true
+}
+
+func ExampleChain_AppendChain() {
+	common := middleware.New(tag("common"))
+	api := middleware.New(tag("api"))
+	serveOnce(common.AppendChain(api).Then(hello()))
+
+	broken := api.Use(bodylimit.New(0))
+	fmt.Println(common.AppendChain(broken).Err())
+	// Output:
+	// enter common
+	// enter api
+	// handler
+	// leave api
+	// leave common
+	// middleware: invalid configuration: bodylimit: maxBytes: must be greater than 0
 }

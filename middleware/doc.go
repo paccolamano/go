@@ -5,9 +5,9 @@
 // net/http and with any router built on it, and mixes freely with middleware
 // from other libraries. [Chain] composes middleware in the order chosen by the
 // caller: the first one is the outermost, it receives the request first and
-// the response last. Chains are immutable: [Chain.Append] and [Chain.Extend]
-// return new chains, so a base chain can be shared and specialized for
-// different route groups.
+// the response last. Chains are immutable: [Chain.Append], [Chain.Use] and
+// [Chain.AppendChain] return new chains, so a base chain can be shared and
+// specialized for different route groups.
 //
 // # Conventions
 //
@@ -21,6 +21,26 @@
 // once, by New: invalid or contradictory settings are reported as an error
 // that matches [ErrInvalidConfig] with errors.Is, before any request is
 // served.
+//
+// [Chain.Use] takes the two results of a constructor directly and records the
+// error, so building a chain takes a single check, with [Chain.Err], on the
+// most derived chain:
+//
+//	base := middleware.New().
+//		Use(requestid.New()).
+//		Use(recovery.New(logger))
+//	api := base.
+//		Use(cors.New(origins)).
+//		Use(ratelimit.New(100, time.Minute))
+//	if err := api.Err(); err != nil { // covers base too
+//		return err
+//	}
+//	mux.Handle("GET /healthz", base.Then(health))
+//	mux.Handle("/api/", api.Then(apiHandler))
+//
+// [Chain.Then] panics on a chain with recorded errors, listing them, so a
+// forgotten check fails at startup and shows its cause. [Chain.Append] takes
+// middleware that are already built, such as those of other libraries.
 //
 // Every middleware that refuses or fails a request (bodylimit, contenttype,
 // decompress, ratelimit, maxconcurrency and recovery) follows one standard to

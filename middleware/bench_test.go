@@ -52,3 +52,27 @@ func BenchmarkRecommendedChain(b *testing.B) {
 		h.ServeHTTP(httptest.NewRecorder(), req)
 	}
 }
+
+// BenchmarkChain_Use compares a request through the same middleware built with
+// New and with Use (SC-005: the same allocations, and at most 5% more time).
+func BenchmarkChain_Use(b *testing.B) {
+	origins := []string{"https://app.example.com"}
+	chains := []struct {
+		name  string
+		chain middleware.Chain
+	}{
+		{"New", middleware.New(must(b)(requestid.New()), must(b)(bodylimit.New(1<<20)), must(b)(cors.New(origins)))},
+		{"Use", middleware.New().Use(requestid.New()).Use(bodylimit.New(1 << 20)).Use(cors.New(origins))},
+	}
+	for _, c := range chains {
+		b.Run(c.name, func(b *testing.B) {
+			h := c.chain.Then(http.NotFoundHandler())
+			req := httptest.NewRequestWithContext(b.Context(), http.MethodGet, "/", nil)
+			req.Header.Set("Origin", origins[0])
+			b.ReportAllocs()
+			for b.Loop() {
+				h.ServeHTTP(httptest.NewRecorder(), req)
+			}
+		})
+	}
+}
