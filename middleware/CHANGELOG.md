@@ -7,6 +7,22 @@ and this module adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Removed
+
+- **Breaking**: `Chain.Extend`. Replace `Extend` with `AppendChain`.
+
+### Added
+
+- `Chain.Use`, which takes the two results of a constructor directly:
+  `chain.Use(requestid.New())`. When the error is not nil, the middleware is not added and the
+  error is recorded in the new chain.
+- `Chain.Err`, which returns every error recorded in a chain and in the chains it derives from,
+  joined in the order recorded. One check on the most derived chain covers all of them.
+- `Chain.AppendChain`, the former `Extend`: the middleware of the chain, then those of the
+  other chain. It also carries the other chain's recorded errors.
+- `Chain.Then` panics on a chain with recorded errors, with every error in the message, so a
+  forgotten `Err` check fails at startup. Chains built without `Use` behave as before.
+
 ## [0.1.0] - 2026-10-16
 
 ### Added

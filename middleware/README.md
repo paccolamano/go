@@ -16,30 +16,28 @@ Minimum Go version: 1.26
 ```go
 logger := slog.Default()
 
-rid, err := requestid.New()
-if err != nil {
+base := middleware.New().
+	Use(requestid.New()).
+	Use(accesslog.New(logger)).
+	Use(recovery.New(logger))
+api := base.
+	Use(cors.New([]string{"https://app.example.com"})).
+	Use(bodylimit.New(1 << 20))
+if err := api.Err(); err != nil { // reports the errors of base too
 	log.Fatal(err)
 }
-alog, err := accesslog.New(logger, accesslog.WithSkip(func(r *http.Request) bool {
-	return r.URL.Path == "/healthz"
-}))
-if err != nil {
-	log.Fatal(err)
-}
-rec, err := recovery.New(logger)
-if err != nil {
-	log.Fatal(err)
-}
-
-base := middleware.New(rid, alog, rec)
 
 mux := http.NewServeMux()
-mux.Handle("/", base.Then(appHandler))
+mux.Handle("GET /healthz", base.Then(healthHandler))
+mux.Handle("/api/", api.Then(apiHandler))
 ```
 
-`New`, `Append` and `Extend` build immutable chains: the first middleware is the
-outermost. Every constructor validates its configuration and returns an error matching
-`middleware.ErrInvalidConfig` when a setting is invalid.
+`New`, `Append`, `Use` and `AppendChain` build immutable chains: the first middleware is
+the outermost. Every constructor validates its configuration and returns an error matching
+`middleware.ErrInvalidConfig` when a setting is invalid. `Use` takes a constructor's two
+results and records the error, and `Err` reports the errors of a chain and of the chains it
+derives from, so one check covers them all. `Then` panics on a chain with recorded errors,
+so a forgotten check fails at startup.
 
 ## Packages
 

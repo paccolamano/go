@@ -44,35 +44,28 @@ func jsonReject(w http.ResponseWriter, r *http.Request, rej middleware.Rejection
 }
 
 // recommendedChain builds every middleware of the module in the recommended
-// order, with the same refusal format everywhere.
-func recommendedChain(logger *slog.Logger) (middleware.Chain, error) {
-	var errs []error
-	add := func(mw middleware.Middleware, err error) middleware.Middleware {
-		errs = append(errs, err)
-		return mw
-	}
-	chain := middleware.New(
-		add(realip.New(realip.TrustRanges("10.0.0.0/8"))),
-		add(requestid.New()),
-		add(accesslog.New(logger)),
-		add(recovery.New(logger, recovery.WithRejectFunc(jsonReject))),
-		add(secureheaders.New()),
-		add(cors.New([]string{"https://app.example.com"})),
-		add(ratelimit.New(100, time.Minute, ratelimit.WithRejectFunc(jsonReject))),
-		add(maxconcurrency.New(256, maxconcurrency.WithRejectFunc(jsonReject))),
-		add(bodylimit.New(1<<20, bodylimit.WithRejectFunc(jsonReject))),
-		add(decompress.New(decompress.WithRejectFunc(jsonReject))),
-		add(contenttype.New([]string{"application/json"}, contenttype.WithRejectFunc(jsonReject))),
-		add(compress.New()),
-		add(etag.New()),
-	)
-	return chain, errors.Join(errs...)
+// order, with the same refusal format everywhere. The caller checks its Err.
+func recommendedChain(logger *slog.Logger) middleware.Chain {
+	return middleware.New().
+		Use(realip.New(realip.TrustRanges("10.0.0.0/8"))).
+		Use(requestid.New()).
+		Use(accesslog.New(logger)).
+		Use(recovery.New(logger, recovery.WithRejectFunc(jsonReject))).
+		Use(secureheaders.New()).
+		Use(cors.New([]string{"https://app.example.com"})).
+		Use(ratelimit.New(100, time.Minute, ratelimit.WithRejectFunc(jsonReject))).
+		Use(maxconcurrency.New(256, maxconcurrency.WithRejectFunc(jsonReject))).
+		Use(bodylimit.New(1<<20, bodylimit.WithRejectFunc(jsonReject))).
+		Use(decompress.New(decompress.WithRejectFunc(jsonReject))).
+		Use(contenttype.New([]string{"application/json"}, contenttype.WithRejectFunc(jsonReject))).
+		Use(compress.New()).
+		Use(etag.New())
 }
 
 func ExampleNew_recommended() {
 	logger := slog.New(slog.DiscardHandler)
-	chain, err := recommendedChain(logger)
-	if err != nil {
+	chain := recommendedChain(logger)
+	if err := chain.Err(); err != nil {
 		panic(err)
 	}
 	h := chain.Then(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
