@@ -17,7 +17,8 @@ type levelKey struct{}
 type ctxAttrs struct{ attrs []slog.Attr }
 
 // With returns a context that carries attrs in addition to the attributes of
-// ctx. ContextHandler adds them to every record logged with that context.
+// ctx. The Handler built by New adds them to every record logged with that
+// context.
 //
 // Empty attributes are dropped and groups with an empty key are inlined. When a
 // key is attached again, its latest value replaces the earlier one, in the
@@ -48,11 +49,11 @@ func With(ctx context.Context, attrs ...slog.Attr) context.Context {
 }
 
 // WithLevel returns a context that carries the minimum level of the records
-// logged with it. LevelHandler compares the level of those records with it
-// alone, ignoring the threshold of the next handler in both directions: it can
-// enable debug records for one request, or silence a request. The innermost
-// WithLevel along a chain of contexts applies. A nil ctx is treated as
-// context.Background().
+// logged with it. The Handler built by New compares the level of those records
+// with it alone, ignoring the default level and the threshold of the next
+// handler, in both directions: it can enable debug records for one request, or
+// silence a request. The innermost WithLevel along a chain of contexts applies.
+// A nil ctx is treated as context.Background().
 func WithLevel(ctx context.Context, level slog.Level) context.Context {
 	if ctx == nil {
 		ctx = context.Background()

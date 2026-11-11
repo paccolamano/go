@@ -1,12 +1,13 @@
-// Package slogx provides composable slog.Handler middleware: attributes from
-// the context, redaction of sensitive data, a per-request level and sampling of
-// repeated records. It adds no logger type: use *slog.Logger with the handlers
-// of this package.
+// Package slogx provides a slog.Handler that adds three things to the standard
+// structured logger, without a logger type of its own: attributes taken from
+// the context of each record, redaction of sensitive data, and levels decided
+// once for every output: a default level, and a minimum level attached to the
+// context of one request. Use *slog.Logger with the Handler that New builds:
 //
 //	h, err := slogx.New(slog.NewJSONHandler(os.Stdout, nil),
-//		slogx.WithContextFunc(requestIDAttrs),
+//		slogx.WithDefaultLevel(slog.LevelInfo),
+//		slogx.WithContextValue("request_id", requestid.FromContext),
 //		slogx.WithRedactKeys("authorization", "password", "token", "cookie"),
-//		slogx.WithSampling(10, 100, time.Second),
 //	)
 //	if err != nil {
 //		return err
@@ -15,13 +16,18 @@
 //
 // # Context attributes
 //
-// With attaches attributes to a context, and WithContextFunc reads values that
-// other packages stored in it, such as a request identifier. ContextHandler
-// adds both to every record logged with that context, so a service that only
-// receives a context still logs the request identifier, the user or the tenant:
+// With attaches attributes to a context, and WithContextValue and
+// WithContextFunc read values that other packages stored in it, such as a
+// request identifier. The Handler adds them to every record logged with that
+// context, so a service that only receives a context still logs the request
+// identifier, the user or the tenant:
 //
 //	ctx = slogx.With(ctx, slog.String("tenant", tenantID))
 //	logger.InfoContext(ctx, "order created") // the record carries tenant
+//
+// WithContextValue adds one attribute from an accessor such as
+// requestid.FromContext. WithContextFunc is for a function that returns several
+// attributes, such as the trace and span identifiers.
 //
 // Context attributes are always written at the top level, also inside a
 // logger.WithGroup, so that they are found in the same place in every record.
@@ -29,8 +35,8 @@
 // with the same key, that attribute wins and the context attribute is skipped:
 // a key is never written twice at the top level. Among context attributes, the
 // latest attached value of a key wins over earlier ones, attached attributes
-// win over extracted ones, and the first extraction function wins over later
-// ones.
+// win over the others, and among context values and extraction functions, the
+// first configured wins.
 //
 // Context attributes and the per-request level reach only the records logged
 // with the methods that take a context: InfoContext, DebugContext, LogAttrs and
@@ -40,14 +46,14 @@
 //
 // # Redaction and secrets
 //
-// RedactHandler writes [REDACTED] as the value of every attribute whose key is
-// one of the keys given with WithRedactKeys, compared without regard to case,
-// as a whole key and at every depth. It covers the attributes of the record,
-// those added with logger.With, the context attributes, groups, and the groups
-// that LogValuer values resolve to; the key is checked before the value is
-// resolved, so a sensitive LogValuer is never called. A matching group, or a
-// matching logger.WithGroup, is written as key=[REDACTED] with its whole
-// content dropped.
+// With WithRedactKeys, the Handler writes [REDACTED] as the value of every
+// attribute whose key is one of the given keys, compared without regard to
+// case, as a whole key and at every depth. It covers the attributes of the
+// record, those added with logger.With, the context attributes, groups, and
+// the groups that LogValuer values resolve to; the key is checked before the
+// value is resolved, so a sensitive LogValuer is never called. A matching
+// group, or a matching logger.WithGroup, is written as key=[REDACTED] with its
+// whole content dropped.
 //
 // Redaction does not change the message, and does not look inside values that
 // the output handler encodes on its own: structs, maps and error messages. For
@@ -56,63 +62,70 @@
 // field, and only Secret.Reveal returns it. Reflection-based printers that read
 // unexported fields and follow pointers can still reach the value.
 //
-// # Per-request level
+// # Levels
 //
-// WithLevel attaches a minimum level to a context, and LevelHandler compares
-// the records logged with that context to it alone, ignoring the threshold of
-// the output handler. It can enable debug records for one request in
-// production, for example one that carries a signed header, or silence one.
+// WithDefaultLevel sets the level of the records logged with a context that
+// carries no level. The Handler compares them with it alone and does not ask
+// the next handler, so the level holds whatever the outputs enable: the
+// OpenTelemetry bridge, for example, enables every level. A *slog.LevelVar
+// changes it at run time. Without WithDefaultLevel, the next handler decides.
 //
-// # Sampling
+// WithLevel attaches a minimum level to a context. The records logged with that
+// context are compared with it alone, ignoring the default level and the
+// output's own level, in both directions: it can enable debug records for one
+// request in production, for example one that carries a signed header, or
+// silence one.
 //
-// SamplingHandler groups records by level and message. In each interval, the
-// first records of a group are written, then one every thereafter: with
-// WithSampling(10, 100, time.Second), 10,000 identical records in one second
-// write 109. Records at slog.LevelError and above are always written, unless
-// WithSampleErrors is given. At most 1,024 groups are tracked per interval, and
-// the records of any other group are written.
+// A record enabled by either level reaches the next handler whatever the next
+// handler's own level: no handler after the Handler checks the level again.
 //
-// After an interval with drops, one summary per group is written, with the
-// group's level:
+// # Several outputs
 //
-//	{"level":"WARN","msg":"records dropped by sampling","sampling":{"msg":"db query failed","dropped":9891,"start":"…","end":"…"}}
+// Fanout passes every record to several outputs, such as stdout and the
+// OpenTelemetry bridge, without asking them whether they handle its level, so
+// that they all receive the same records: the same levels, the same context
+// attributes, the same redaction. Give it to New as the next handler, directly,
+// with WithDefaultLevel, which New then requires:
 //
-// Summaries are emitted by the first record handled after the interval ends,
-// and by Flush: call Flush at shutdown so that the last interval is reported.
-// They carry no attribute of the logger or of any request. No goroutine is
-// started.
+//	h, err := slogx.New(slogx.Fanout(stdout, otel), slogx.WithDefaultLevel(level))
+//
+// A Fanout wrapped in another handler is not recognized. The levels of the
+// outputs are ignored, and a New used as one output, to add attributes to that
+// output only, is not asked about levels either: give the level to the outer
+// one.
+//
+// For deliberately different thresholds per output, use slog.NewMultiHandler
+// instead: each output applies its own level, and the per-request level does
+// not go below it.
 //
 // # Composition
 //
-// New composes the handlers in the only correct order:
+// The Handler applies, in this order:
 //
-//	LevelHandler → SamplingHandler → ContextHandler → RedactHandler → output
+//	level → context attributes → redaction → next handler
 //
 // Each position has a reason:
 //
-//   - LevelHandler is outermost, because slog.Logger asks only the outermost
-//     handler whether a level is enabled: anywhere else, the output handler's
-//     threshold would discard the debug records of a request first.
-//   - SamplingHandler comes before the context attributes and the redaction, so
-//     that a dropped record costs nothing more and summaries carry no request
-//     attribute.
-//   - RedactHandler comes after ContextHandler, so that a token stored in the
-//     context is redacted too.
+//   - The level comes first, because slog.Logger asks only the outermost
+//     handler whether a level is enabled.
+//   - The redaction comes after the context attributes, so that a token stored
+//     in the context is redacted too.
 //
-// The standalone handlers give finer control; New's documentation shows the
-// equivalent manual composition. Constructors report invalid options, and
-// options that do not apply to them, as errors wrapping ErrInvalidConfig.
+// New reports invalid configuration, such as a nil default level or a Fanout
+// without WithDefaultLevel, as errors wrapping ErrInvalidConfig.
 //
 // # Robustness
 //
 // No handler panics or lets a panic escape. A LogValue method that panics is
 // replaced by slog's own placeholder, an error whose text starts with
-// "LogValue panicked". An extraction function that panics is replaced by the
-// attribute !CONTEXTFUNC="panic: <value>". Redaction follows groups 64 levels
-// deep, and a deeper group value becomes the string !DEPTH, so that a
-// LogValuer that returns itself cannot exhaust the stack. A handler returns the
-// next handler's error unchanged. When a record is disabled, no handler
-// allocates memory.
+// "LogValue panicked". An extraction function or a context value that panics
+// is replaced by the attribute !CONTEXTFUNC="panic: <value>". Redaction follows
+// groups 64 levels deep, and a deeper group value becomes the string !DEPTH, so
+// that a LogValuer that returns itself cannot exhaust the stack. The Handler
+// returns the next handler's error unchanged, and a Fanout returns the error of
+// a single failing output unchanged and combines several with errors.Join.
+// When a record is disabled, the Handler allocates no memory, and calls no
+// extraction function and no context value.
 //
 // Package slogxtest provides a Recorder handler, to check in tests what code
 // logs.

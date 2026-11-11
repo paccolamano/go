@@ -10,10 +10,11 @@ import (
 	"github.com/paccolamano/go/slogx"
 )
 
-// contextLogger returns a logger that writes context attributes as JSON into buf.
+// contextLogger returns a logger that writes the context attributes as JSON
+// into buf, through New.
 func contextLogger(tb testing.TB, buf *bytes.Buffer, opts ...slogx.Option) *slog.Logger {
 	tb.Helper()
-	return slog.New(must(slogx.NewContextHandler(newJSON(buf, nil), opts...)))
+	return slog.New(must(slogx.New(newJSON(buf, nil), opts...)))
 }
 
 func TestWith_DerivedContexts(t *testing.T) {

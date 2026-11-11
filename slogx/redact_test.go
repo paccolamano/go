@@ -14,10 +14,10 @@ import (
 
 var sensitiveKeys = []string{"authorization", "password", "token", "cookie"}
 
-// redactLogger returns a logger that writes into buf through a RedactHandler
-// with the sensitive keys.
+// redactLogger returns a logger that writes into buf through New, with the
+// sensitive keys.
 func redactLogger(buf *bytes.Buffer) *slog.Logger {
-	return slog.New(must(slogx.NewRedactHandler(newJSON(buf, nil), slogx.WithRedactKeys(sensitiveKeys...))))
+	return slog.New(must(slogx.New(newJSON(buf, nil), slogx.WithRedactKeys(sensitiveKeys...))))
 }
 
 // userValue resolves to a group that contains a token.
@@ -35,13 +35,13 @@ func (v countingValuer) LogValue() slog.Value {
 	return slog.StringValue("hunter2")
 }
 
-func TestRedactHandler_Conformance(t *testing.T) {
+func TestRedact_Conformance(t *testing.T) {
 	testConformance(t, func(next slog.Handler) slog.Handler {
-		return must(slogx.NewRedactHandler(next, slogx.WithRedactKeys("password")))
+		return must(slogx.New(next, slogx.WithRedactKeys("password")))
 	})
 }
 
-func TestRedactHandler_Keys(t *testing.T) {
+func TestRedact_Keys(t *testing.T) {
 	var buf bytes.Buffer
 	redactLogger(&buf).Info("login", "user", "bob", "password", "hunter2")
 	if got, want := onlyLine(t, &buf), `{"level":"INFO","msg":"login","user":"bob","password":"[REDACTED]"}`; got != want {
@@ -49,7 +49,7 @@ func TestRedactHandler_Keys(t *testing.T) {
 	}
 }
 
-func TestRedactHandler_CaseInsensitiveInGroups(t *testing.T) {
+func TestRedact_CaseInsensitiveInGroups(t *testing.T) {
 	tests := []struct {
 		key  string
 		want string
@@ -69,7 +69,7 @@ func TestRedactHandler_CaseInsensitiveInGroups(t *testing.T) {
 	}
 }
 
-func TestRedactHandler_LogValuerGroup(t *testing.T) {
+func TestRedact_LogValuerGroup(t *testing.T) {
 	var buf bytes.Buffer
 	var calls atomic.Int32
 	redactLogger(&buf).Info("u", "user", userValue{name: "bob", token: "s3cr3t"}, "token", countingValuer{&calls})
@@ -81,7 +81,7 @@ func TestRedactHandler_LogValuerGroup(t *testing.T) {
 	}
 }
 
-func TestRedactHandler_LogValuerResolvedOnce(t *testing.T) {
+func TestRedact_LogValuerResolvedOnce(t *testing.T) {
 	var buf bytes.Buffer
 	var calls atomic.Int32
 	redactLogger(&buf).Info("m", "v", countingValuer{&calls})
@@ -90,7 +90,7 @@ func TestRedactHandler_LogValuerResolvedOnce(t *testing.T) {
 	}
 }
 
-func TestRedactHandler_WithAttrs(t *testing.T) {
+func TestRedact_WithAttrs(t *testing.T) {
 	var buf bytes.Buffer
 	logger := redactLogger(&buf).With("token", "s3cr3t")
 	logger.Info("first")
@@ -109,7 +109,7 @@ func TestRedactHandler_WithAttrs(t *testing.T) {
 	}
 }
 
-func TestRedactHandler_WholeKeyOnly(t *testing.T) {
+func TestRedact_WholeKeyOnly(t *testing.T) {
 	var buf bytes.Buffer
 	redactLogger(&buf).Info("m", "password_hint", "x", "my_token", "y")
 	if got, want := onlyLine(t, &buf), `{"level":"INFO","msg":"m","password_hint":"x","my_token":"y"}`; got != want {
@@ -117,7 +117,7 @@ func TestRedactHandler_WholeKeyOnly(t *testing.T) {
 	}
 }
 
-func TestRedactHandler_GroupKey(t *testing.T) {
+func TestRedact_GroupKey(t *testing.T) {
 	tests := []struct {
 		name string
 		log  func(*slog.Logger)
@@ -155,7 +155,7 @@ func TestRedactHandler_GroupKey(t *testing.T) {
 	}
 }
 
-func TestRedactHandler_Untouched(t *testing.T) {
+func TestRedact_Untouched(t *testing.T) {
 	log := func(l *slog.Logger) {
 		l.With("service", "api").WithGroup("req").Info("token hunter2",
 			"method", "GET",
@@ -171,9 +171,9 @@ func TestRedactHandler_Untouched(t *testing.T) {
 	}
 }
 
-func TestRedactHandler_ReturnsNextError(t *testing.T) {
+func TestRedact_ReturnsNextError(t *testing.T) {
 	errNext := errors.New("next failed")
-	h := must(slogx.NewRedactHandler(&recordingHandler{err: errNext}, slogx.WithRedactKeys("token")))
+	h := must(slogx.New(&recordingHandler{err: errNext}, slogx.WithRedactKeys("token")))
 	logger := slog.New(h)
 	for _, l := range []*slog.Logger{logger, logger.WithGroup("token")} {
 		err := l.Handler().Handle(context.Background(), recordWith(slog.String("token", "x")))
@@ -183,7 +183,7 @@ func TestRedactHandler_ReturnsNextError(t *testing.T) {
 	}
 }
 
-func TestRedactHandler_Options(t *testing.T) {
+func TestRedact_Options(t *testing.T) {
 	next := newJSON(&bytes.Buffer{}, nil)
 	tests := []struct {
 		name string
@@ -191,36 +191,30 @@ func TestRedactHandler_Options(t *testing.T) {
 		opts []slogx.Option
 	}{
 		{"nil next", nil, []slogx.Option{slogx.WithRedactKeys("x")}},
-		{"missing required option", next, nil},
 		{"no key", next, []slogx.Option{slogx.WithRedactKeys()}},
 		{"blank key", next, []slogx.Option{slogx.WithRedactKeys(" ")}},
-		{"inapplicable option", next, []slogx.Option{slogx.WithRedactKeys("x"), slogx.WithContextFunc(ridAttrs)}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, err := slogx.NewRedactHandler(tt.next, tt.opts...)
+			h, err := slogx.New(tt.next, tt.opts...)
 			if !errors.Is(err, slogx.ErrInvalidConfig) || h != nil {
-				t.Errorf("NewRedactHandler = %v, %v; want nil, ErrInvalidConfig", h, err)
+				t.Errorf("New = %v, %v; want nil, ErrInvalidConfig", h, err)
 			}
 		})
 	}
 }
 
-func TestRedactHandler_Derived(t *testing.T) {
-	h := must(slogx.NewRedactHandler(newJSON(&bytes.Buffer{}, nil), slogx.WithRedactKeys("token")))
+func TestRedact_Derived(t *testing.T) {
+	h := must(slogx.New(newJSON(&bytes.Buffer{}, nil), slogx.WithRedactKeys("token")))
 	if h.WithGroup("") != slog.Handler(h) || h.WithAttrs(nil) != slog.Handler(h) {
 		t.Error(`WithGroup("") or WithAttrs(nil) did not return the receiver`)
 	}
 	if !h.Enabled(context.Background(), slog.LevelInfo) || h.Enabled(context.Background(), slog.LevelDebug) {
 		t.Error("Enabled does not forward to the next handler")
 	}
-	sealed := h.WithGroup("token")
-	if sealed.WithGroup("x") != sealed || sealed.WithAttrs([]slog.Attr{slog.Int("a", 1)}) != sealed {
-		t.Error("a sealed handler does not return itself")
-	}
 }
 
-func TestAlloc_RedactHandlerDisabled(t *testing.T) {
-	h := must(slogx.NewRedactHandler(newJSON(&bytes.Buffer{}, nil), slogx.WithRedactKeys(sensitiveKeys...)))
+func TestAlloc_RedactDisabled(t *testing.T) {
+	h := must(slogx.New(newJSON(&bytes.Buffer{}, nil), slogx.WithRedactKeys(sensitiveKeys...)))
 	assertNoAllocsWhenDisabled(t, h, context.Background())
 }
